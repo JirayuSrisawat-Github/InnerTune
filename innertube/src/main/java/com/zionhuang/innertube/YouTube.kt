@@ -433,7 +433,7 @@ object YouTube {
 
     suspend fun player(videoId: String, playlistId: String? = null): Result<PlayerResponse> = runCatching {
         lastPlayerClient = null
-        fun fetch(client: YouTubeClient) = innerTube.player(client, videoId, playlistId).body<PlayerResponse>()
+        suspend fun fetch(client: YouTubeClient) = innerTube.player(client, videoId, playlistId).body<PlayerResponse>()
 
         var lastClient = VISION_OS
         var lastResponse = fetch(lastClient)
