@@ -79,6 +79,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.media3.common.Timeline
 import androidx.media3.exoplayer.source.ShuffleOrder.DefaultShuffleOrder
 import androidx.navigation.NavController
+import com.zionhuang.innertube.YouTube
 import com.zionhuang.music.LocalPlayerConnection
 import com.zionhuang.music.R
 import com.zionhuang.music.constants.ListItemHeight
@@ -695,19 +696,29 @@ fun DetailsDialog(
                     .sizeIn(minWidth = 280.dp, maxWidth = 560.dp)
                     .verticalScroll(rememberScrollState())
             ) {
-                listOf(
-                    stringResource(R.string.song_title) to mediaMetadata?.title,
-                    stringResource(R.string.song_artists) to mediaMetadata?.artists?.joinToString { it.name },
-                    stringResource(R.string.media_id) to mediaMetadata?.id,
-                    "Itag" to currentFormat?.itag?.toString(),
-                    stringResource(R.string.mime_type) to currentFormat?.mimeType,
-                    stringResource(R.string.codecs) to currentFormat?.codecs,
-                    stringResource(R.string.bitrate) to currentFormat?.bitrate?.let { "${it / 1000} Kbps" },
-                    stringResource(R.string.sample_rate) to currentFormat?.sampleRate?.let { "$it Hz" },
-                    stringResource(R.string.loudness) to currentFormat?.loudnessDb?.let { "$it dB" },
-                    stringResource(R.string.volume) to "${(playerConnection.player.volume * 100).toInt()}%",
-                    stringResource(R.string.file_size) to currentFormat?.contentLength?.let { Formatter.formatShortFileSize(context, it) }
-                ).forEach { (label, text) ->
+                val yesText = stringResource(R.string.yes)
+                val noText = stringResource(R.string.no)
+                val locale = YouTube.locale
+                val details = buildList {
+                    add(stringResource(R.string.song_title) to mediaMetadata?.title)
+                    add(stringResource(R.string.song_artists) to mediaMetadata?.artists?.joinToString { it.name })
+                    add(stringResource(R.string.media_id) to mediaMetadata?.id)
+                    add("Itag" to currentFormat?.itag?.toString())
+                    add(stringResource(R.string.mime_type) to currentFormat?.mimeType)
+                    add(stringResource(R.string.codecs) to currentFormat?.codecs)
+                    add(stringResource(R.string.bitrate) to currentFormat?.bitrate?.let { "${it / 1000} Kbps" })
+                    add(stringResource(R.string.sample_rate) to currentFormat?.sampleRate?.let { "$it Hz" })
+                    add(stringResource(R.string.loudness) to currentFormat?.loudnessDb?.let { "$it dB" })
+                    add(stringResource(R.string.volume) to "${(playerConnection.player.volume * 100).toInt()}%")
+                    add(stringResource(R.string.file_size) to currentFormat?.contentLength?.let { Formatter.formatShortFileSize(context, it) })
+                    add(stringResource(R.string.playback_client) to YouTube.lastPlayerClient?.let { "${it.clientName} ${it.clientVersion}" })
+                    add(stringResource(R.string.visitor_data) to YouTube.visitorData)
+                    add(stringResource(R.string.login_state) to if (YouTube.cookie != null) yesText else noText)
+                    add(stringResource(R.string.use_login_for_browse) to if (YouTube.useLoginForBrowse) yesText else noText)
+                    add(stringResource(R.string.locale_label) to "${locale.gl}/${locale.hl}")
+                    add(stringResource(R.string.proxy_label) to YouTube.proxy?.address()?.toString())
+                }
+                details.forEach { (label, text) ->
                     val displayText = text ?: stringResource(R.string.unknown)
                     Text(
                         text = label,

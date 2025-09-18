@@ -144,10 +144,6 @@ class InnerTube {
         )
     }
 
-    suspend fun pipedStreams(videoId: String) =
-        httpClient.get("https://pipedapi.kavin.rocks/streams/${videoId}") {
-            contentType(ContentType.Application.Json)
-        }
 
     suspend fun browse(
         client: YouTubeClient,
@@ -238,7 +234,6 @@ class InnerTube {
         )
     }
 
-    suspend fun getSwJsData() = httpClient.get("https://music.youtube.com/sw.js_data")
 
     suspend fun accountMenu(client: YouTubeClient) = httpClient.post("account/account_menu") {
         ytClient(client, setLogin = true)

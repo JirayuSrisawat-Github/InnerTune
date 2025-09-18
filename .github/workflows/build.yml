@@ -17,12 +17,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - name: Decode google-services.json
-        run: echo ${{ secrets.GOOGLE_SERVICES }} | base64 -d >> app/google-services.json
+        run: echo ${{ secrets.DEBUG_GOOGLE_SERVICES }} | base64 -d >> app/src/debug/google-services.json
 
       - name: Decode Keystore
-        run: echo ${{ secrets.KEYSTORE }} | base64 -d >> app/music-debug.jks
+        run: echo ${{ secrets.DEBUG_KEYSTORE }} | base64 -d >> app/music-debug.jks
 
       - name: set up JDK 17
         uses: actions/setup-java@v4
@@ -34,9 +33,10 @@ jobs:
       - name: Build debug APK and run jvm tests
         run: ./gradlew assembleDebug lintFullDebug testFullDebugUnitTest --stacktrace -DskipFormatKtlint
         env:
-          MUSIC_DEBUG_KEYSTORE_FILE: 'music-debug.jks'
-          MUSIC_DEBUG_SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
-          MUSIC_DEBUG_SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
+          MUSIC_KEYSTORE_FILE: 'music-debug.jks'
+          MUSIC_SINGING_KEY_ALIAS: ${{ secrets.DEBUG_SINGING_KEY_ALIAS }}
+          MUSIC_SIGNING_STORE_PASSWORD: ${{ secrets.DEBUG_SIGNING_STORE_PASSWORD }}
+          MUSIC_SIGNING_KEY_PASSWORD: ${{ secrets.DEBUG_SIGNING_KEY_PASSWORD }}
 
       - name: Upload APK
         uses: actions/upload-artifact@v4

@@ -126,6 +126,14 @@
     <string name="loudness">Loudness</string>
     <string name="volume">Volume</string>
     <string name="file_size">File size</string>
+    <string name="playback_client">Playback client</string>
+    <string name="visitor_data">Visitor data</string>
+    <string name="locale_label">Locale</string>
+    <string name="proxy_label">Proxy</string>
+    <string name="login_state">Logged in</string>
+    <string name="use_login_for_browse">Use login for browse</string>
+    <string name="yes">Yes</string>
+    <string name="no">No</string>
     <string name="unknown">Unknown</string>
     <string name="copied">Copied to clipboard</string>
 

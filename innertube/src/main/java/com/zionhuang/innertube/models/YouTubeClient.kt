@@ -58,19 +58,27 @@ data class YouTubeClient(
             referer = REFERER_YOUTUBE_MUSIC
         )
 
-        val TVHTML5 = YouTubeClient(
-            clientName = "TVHTML5_SIMPLY_EMBEDDED_PLAYER",
-            clientVersion = "2.0",
-            api_key = "AIzaSyDCU8hByM-4DrUqRUYnGn-3llEO78bcxq8",
-            userAgent = "Mozilla/5.0 (PlayStation 4 5.55) AppleWebKit/601.2 (KHTML, like Gecko)"
-        )
-
         val IOS = YouTubeClient(
             clientName = "IOS",
             clientVersion = "19.29.1",
             api_key = "AIzaSyB-63vPrdThhKuerbB2N_l7Kwwcxj6yUAc",
             userAgent = USER_AGENT_IOS,
             osVersion = "17.5.1.21F90",
+        )
+
+        val VISION_OS = YouTubeClient(
+            clientName = "VISIONOS",
+            clientVersion = "0.1",
+            api_key = "AIzaSyB-63vPrdThhKuerbB2N_l7Kwwcxj6yUAc",
+            userAgent = USER_AGENT_IOS,
+            osVersion = "17.5.1.21F90",
+        )
+
+        val TVHTML5 = YouTubeClient(
+            clientName = "TVHTML5_SIMPLY_EMBEDDED_PLAYER",
+            clientVersion = "2.0",
+            api_key = "AIzaSyDCU8hByM-4DrUqRUYnGn-3llEO78bcxq8",
+            userAgent = "Mozilla/5.0 (PlayStation 4 5.55) AppleWebKit/601.2 (KHTML, like Gecko)"
         )
     }
 }

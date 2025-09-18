@@ -1,0 +1,59 @@
+name: Build release APK
+
+on:
+  release:
+    types:
+      - published
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Decode google-services.json (DEBUG)
+        run: echo ${{ secrets.DEBUG_GOOGLE_SERVICES }} | base64 -d >> app/src/debug/google-services.json
+
+      - name: Decode google-services.json
+        run: echo ${{ secrets.GOOGLE_SERVICES }} | base64 -d >> app/google-services.json
+
+      - name: Decode Keystore (DEBUG)
+        run: echo ${{ secrets.DEBUG_KEYSTORE }} | base64 -d >> app/music-debug.jks
+
+      - name: Decode Keystore
+        run: echo ${{ secrets.KEYSTORE }} | base64 -d >> app/music-release.jks
+
+      - name: Build debug APK
+        run: ./gradlew assembleDebug lintFullDebug testFullDebugUnitTest --stacktrace -DskipFormatKtlint
+        env:
+          MUSIC_KEYSTORE_FILE: 'music-debug.jks'
+          MUSIC_SINGING_KEY_ALIAS: ${{ secrets.DEBUG_SINGING_KEY_ALIAS }}
+          MUSIC_SIGNING_STORE_PASSWORD: ${{ secrets.DEBUG_SIGNING_STORE_PASSWORD }}
+          MUSIC_SIGNING_KEY_PASSWORD: ${{ secrets.DEBUG_SIGNING_KEY_PASSWORD }}
+
+      - name: Build release APK
+        run: ./gradlew assembleRelease --stacktrace -DskipFormatKtlint
+        env:
+          MUSIC_KEYSTORE_FILE: 'music-release.jks'
+          MUSIC_SINGING_KEY_ALIAS: ${{ secrets.SINGING_KEY_ALIAS }}
+          MUSIC_SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
+          MUSIC_SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: app
+          path: |
+            app/build/outputs/apk/full/debug/*.apk
+            app/build/outputs/apk/full/release/*.apk
+
+      - name: Upload Artifacts to GitHub Release
+        uses: ncipollo/release-action@v1
+        with:
+          artifacts: |
+            app/build/outputs/apk/full/debug/*.apk
+            app/build/outputs/apk/full/release/*.apk
+          allowUpdates: true
+          omitBodyDuringUpdate: true
+          omitDraftDuringUpdate: true
+          omitNameDuringUpdate: true
+          omitPrereleaseDuringUpdate: true

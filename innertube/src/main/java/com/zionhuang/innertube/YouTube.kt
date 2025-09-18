@@ -12,12 +12,15 @@ import com.zionhuang.innertube.models.SearchSuggestions
 import com.zionhuang.innertube.models.SongItem
 import com.zionhuang.innertube.models.WatchEndpoint
 import com.zionhuang.innertube.models.WatchEndpoint.WatchEndpointMusicSupportedConfigs.WatchEndpointMusicConfig.Companion.MUSIC_VIDEO_TYPE_ATV
+import com.zionhuang.innertube.models.YouTubeClient
 import com.zionhuang.innertube.models.YouTubeClient.Companion.ANDROID_MUSIC
 import com.zionhuang.innertube.models.YouTubeClient.Companion.IOS
 import com.zionhuang.innertube.models.YouTubeClient.Companion.TVHTML5
+import com.zionhuang.innertube.models.YouTubeClient.Companion.VISION_OS
 import com.zionhuang.innertube.models.YouTubeClient.Companion.WEB
 import com.zionhuang.innertube.models.YouTubeClient.Companion.WEB_REMIX
 import com.zionhuang.innertube.models.YouTubeLocale
+import com.zionhuang.innertube.utils.VisitorDataExtractor
 import com.zionhuang.innertube.models.getContinuation
 import com.zionhuang.innertube.models.oddElements
 import com.zionhuang.innertube.models.response.AccountMenuResponse
@@ -26,7 +29,6 @@ import com.zionhuang.innertube.models.response.GetQueueResponse
 import com.zionhuang.innertube.models.response.GetSearchSuggestionsResponse
 import com.zionhuang.innertube.models.response.GetTranscriptResponse
 import com.zionhuang.innertube.models.response.NextResponse
-import com.zionhuang.innertube.models.response.PipedResponse
 import com.zionhuang.innertube.models.response.PlayerResponse
 import com.zionhuang.innertube.models.response.SearchResponse
 import com.zionhuang.innertube.pages.AlbumPage
@@ -49,11 +51,7 @@ import com.zionhuang.innertube.pages.SearchSuggestionPage
 import com.zionhuang.innertube.pages.SearchSummary
 import com.zionhuang.innertube.pages.SearchSummaryPage
 import io.ktor.client.call.body
-import io.ktor.client.statement.bodyAsText
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.jsonArray
-import kotlinx.serialization.json.jsonPrimitive
+import kotlin.jvm.Volatile
 import java.net.Proxy
 
 /**
@@ -88,6 +86,10 @@ object YouTube {
         set(value) {
             innerTube.useLoginForBrowse = value
         }
+
+    @Volatile
+    var lastPlayerClient: YouTubeClient? = null
+        private set
 
     suspend fun searchSuggestions(query: String): Result<SearchSuggestions> = runCatching {
         val response = innerTube.getSearchSuggestions(WEB_REMIX, query).body<GetSearchSuggestionsResponse>()
@@ -430,33 +432,40 @@ object YouTube {
     }
 
     suspend fun player(videoId: String, playlistId: String? = null): Result<PlayerResponse> = runCatching {
-        var playerResponse: PlayerResponse
-        if (this.cookie != null) { // if logged in: try ANDROID_MUSIC client first because IOS client does not play age restricted songs
-            playerResponse = innerTube.player(ANDROID_MUSIC, videoId, playlistId).body<PlayerResponse>()
-            if (playerResponse.playabilityStatus.status == "OK") {
-                return@runCatching playerResponse
+        lastPlayerClient = null
+        fun fetch(client: YouTubeClient) = innerTube.player(client, videoId, playlistId).body<PlayerResponse>()
+
+        var lastClient = VISION_OS
+        var lastResponse = fetch(lastClient)
+        if (lastResponse.playabilityStatus.status == "OK") {
+            lastPlayerClient = lastClient
+            return@runCatching lastResponse
+        }
+
+        if (this.cookie != null) {
+            lastClient = ANDROID_MUSIC
+            lastResponse = fetch(lastClient)
+            if (lastResponse.playabilityStatus.status == "OK") {
+                lastPlayerClient = lastClient
+                return@runCatching lastResponse
             }
         }
-        playerResponse = innerTube.player(IOS, videoId, playlistId).body<PlayerResponse>()
-        if (playerResponse.playabilityStatus.status == "OK") {
-            return@runCatching playerResponse
+
+        lastClient = IOS
+        lastResponse = fetch(lastClient)
+        if (lastResponse.playabilityStatus.status == "OK") {
+            lastPlayerClient = lastClient
+            return@runCatching lastResponse
         }
-        val safePlayerResponse = innerTube.player(TVHTML5, videoId, playlistId).body<PlayerResponse>()
-        if (safePlayerResponse.playabilityStatus.status != "OK") {
-            return@runCatching playerResponse
+
+        val tvResponse = fetch(TVHTML5)
+        if (tvResponse.playabilityStatus.status == "OK") {
+            lastPlayerClient = TVHTML5
+            return@runCatching tvResponse
         }
-        val audioStreams = innerTube.pipedStreams(videoId).body<PipedResponse>().audioStreams
-        safePlayerResponse.copy(
-            streamingData = safePlayerResponse.streamingData?.copy(
-                adaptiveFormats = safePlayerResponse.streamingData.adaptiveFormats.mapNotNull { adaptiveFormat ->
-                    audioStreams.find { it.bitrate == adaptiveFormat.bitrate }?.let {
-                        adaptiveFormat.copy(
-                            url = it.url
-                        )
-                    }
-                }
-            )
-        )
+
+        lastPlayerClient = lastClient
+        lastResponse
     }
 
     suspend fun next(endpoint: WatchEndpoint, continuation: String? = null): Result<NextResult> = runCatching {
@@ -553,11 +562,7 @@ object YouTube {
     }
 
     suspend fun visitorData(): Result<String> = runCatching {
-        Json.parseToJsonElement(innerTube.getSwJsData().bodyAsText().substring(5))
-            .jsonArray[0]
-            .jsonArray[2]
-            .jsonArray.first { (it as? JsonPrimitive)?.content?.startsWith(VISITOR_DATA_PREFIX) == true }
-            .jsonPrimitive.content
+        VisitorDataExtractor.getVisitorData()
     }
 
     suspend fun accountInfo(): Result<AccountInfo> = runCatching {
@@ -581,7 +586,6 @@ object YouTube {
 
     const val MAX_GET_QUEUE_SIZE = 1000
 
-    private const val VISITOR_DATA_PREFIX = "Cgt"
 
     const val DEFAULT_VISITOR_DATA = "CgtsZG1ySnZiQWtSbyiMjuGSBg%3D%3D"
 }
