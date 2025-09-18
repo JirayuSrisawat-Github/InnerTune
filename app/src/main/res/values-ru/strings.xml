@@ -316,6 +316,7 @@
     <string name="translation_models">Модели перевода</string>
     <string name="clear_translation_models">Очистить модели перевода</string>
     <string name="use_login_for_browse">Авторизуйтесь для просмотра контента</string>
+    <string name="use_login_for_browse_label">Авторизуйтесь для просмотра контента</string>
     <string name="use_login_for_browse_desc">Это влияет на отображение контента и, в частности, открывает доступ к премиум-альбомам при входе с премиум-учётной записью</string>
     <string name="action_login">Войти</string>
 </resources>

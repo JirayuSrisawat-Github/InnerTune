@@ -264,6 +264,7 @@
     <string name="clear_search_history">…נקה את היסטוריית החיפוש</string>
     <string name="clear_search_history_confirm">האם אתה בטוח שברצונך למחוק את כל היסטוריית החיפוש?</string>
     <string name="use_login_for_browse">השתמש בכניסה כדי לגלוש בתוכן</string>
+    <string name="use_login_for_browse_label">השתמש בכניסה כדי לגלוש בתוכן</string>
     <string name="use_login_for_browse_desc">זה יכול להשפיע על התוכן שתראו, לדוגמה, יציג אלבומים למשתמשי פרימיום בלבד אם אתם מחוברים לחשבון פרימיום</string>
     <string name="disable_screenshot">השבתת צילום מסך</string>
     <string name="disable_screenshot_desc">כאשר אפשרות זו מופעלת, צילומי מסך ותצוגת האפליקציה תחת \'אחרונים\' מושבתות.</string>

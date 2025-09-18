@@ -314,6 +314,7 @@
     <string name="preview">Podgląd</string>
     <string name="action_logout">Wyloguj</string>
     <string name="use_login_for_browse">Zaloguj się, aby przeglądać treści</string>
+    <string name="use_login_for_browse_label">Zaloguj się, aby przeglądać treści</string>
     <string name="use_login_for_browse_desc">Może mieć wpływ na to, jakie treści widzisz i np. pokazuje albumy tylko premium, jeśli jesteś zalogowany na konto Premium</string>
     <string name="action_login">Zaloguj</string>
 </resources>

@@ -251,6 +251,7 @@
     <string name="clear_search_history">தேடல் வரலாற்றை அழிக்கவும்</string>
     <string name="clear_search_history_confirm">எல்லா தேடல் வரலாற்றையும் அழிக்க விரும்புகிறீர்களா?</string>
     <string name="use_login_for_browse">உள்ளடக்கத்தை உலாவுவதற்கு உள்நுழைவைப் பயன்படுத்தவும்</string>
+    <string name="use_login_for_browse_label">உள்ளடக்கத்தை உலாவுவதற்கு உள்நுழைவைப் பயன்படுத்தவும்</string>
     <string name="use_login_for_browse_desc">நீங்கள் பார்க்கும் உள்ளடக்கத்தை இது பாதிக்கும், எடுத்துக்காட்டாக, நீங்கள் காப்பீடு கணக்கில் உள்நுழைந்துள்ளால் காப்பீடு மட்டும் ஆல்பங்களைக் காட்டுகிறது</string>
     <string name="disable_screenshot_desc">இந்த விருப்பம் இயக்கத்தில் இருக்கும்போது, ச்கிரீன் சாட்கள் மற்றும் ரெசென்ட்களில் பயன்பாட்டின் பார்வை முடக்கப்பட்டுள்ளன.</string>
     <string name="enable_lrclib">LRCLIB பாடல் வழங்குநரை இயக்கு</string>

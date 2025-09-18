@@ -297,4 +297,5 @@
     <string name="enable_discord_rpc">Rijke aanwezigheid inschakelen</string>
     <string name="use_login_for_browse_desc">Dit kan invloed hebben op welke inhoud u ziet en laat bijvoorbeeld alleen premium albums zien als u bent ingelogd met een Premium account</string>
     <string name="use_login_for_browse">Gebruik login om inhoud te bekijken</string>
+    <string name="use_login_for_browse_label">Gebruik login om inhoud te bekijken</string>
 </resources>

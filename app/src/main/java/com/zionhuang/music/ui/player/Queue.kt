@@ -714,7 +714,7 @@ fun DetailsDialog(
                     add(stringResource(R.string.playback_client) to YouTube.lastPlayerClient?.let { "${it.clientName} ${it.clientVersion}" })
                     add(stringResource(R.string.visitor_data) to YouTube.visitorData)
                     add(stringResource(R.string.login_state) to if (YouTube.cookie != null) yesText else noText)
-                    add(stringResource(R.string.use_login_for_browse) to if (YouTube.useLoginForBrowse) yesText else noText)
+                    add(stringResource(R.string.use_login_for_browse_label) to if (YouTube.useLoginForBrowse) yesText else noText)
                     add(stringResource(R.string.locale_label) to "${locale.gl}/${locale.hl}")
                     add(stringResource(R.string.proxy_label) to YouTube.proxy?.address()?.toString())
                 }

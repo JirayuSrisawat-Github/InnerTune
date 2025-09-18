@@ -257,6 +257,7 @@
     <string name="clear_search_history">శోధన చరిత్రను క్లియర్ చేయండి</string>
     <string name="clear_search_history_confirm">మీరు ఖచ్చితంగా మొత్తం శోధన చరిత్రను క్లియర్ చేయాలనుకుంటున్నారా?</string>
     <string name="use_login_for_browse">కంటెంట్ బ్రౌజింగ్ కోసం లాగిన్ ఉపయోగించండి</string>
+    <string name="use_login_for_browse_label">కంటెంట్ బ్రౌజింగ్ కోసం లాగిన్ ఉపయోగించండి</string>
     <string name="use_login_for_browse_desc">ఇది మీరు చూసే కంటెంట్‌ను ప్రభావితం చేస్తుంది మరియు ఉదాహరణకు మీరు ప్రీమియం ఖాతాతో లాగిన్ అయి ఉంటే ప్రీమియం-మాత్రమే ఆల్బమ్‌లను చూపుతుంది</string>
     <string name="disable_screenshot">స్క్రీన్‌షాట్‌ను నిలిపివేయండి</string>
     <string name="disable_screenshot_desc">ఈ ఎంపిక ఆన్‌లో ఉన్నప్పుడు, స్క్రీన్‌షాట్‌లు మరియు ఇటీవలి వాటిలో యాప్‌ల వీక్షణ నిలిపివేయబడతాయి.</string>

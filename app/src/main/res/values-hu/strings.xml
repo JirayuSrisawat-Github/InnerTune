@@ -287,6 +287,7 @@
     <string name="listen_history">Hallgatás előzmény</string>
     <string name="search_history">Keresési előzmények</string>
     <string name="use_login_for_browse">Belépés használata a tartalom böngészéséhez</string>
+    <string name="use_login_for_browse_label">Belépés használata a tartalom böngészéséhez</string>
     <string name="use_login_for_browse_desc">Ez hatással lehet az ajánlott tartalomra. Például megjelenhetnek prémium albumok, ha prémium fiókkal jelentkezik be</string>
     <string name="disable_screenshot">Képernyőkép készítés kikapcsolása</string>
     <string name="disable_screenshot_desc">Ha ez be van kapcsolva, a képernyőkép készítés nem lehetséges, és az előzmények sem látszódnak.</string>

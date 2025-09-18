@@ -284,6 +284,7 @@
     <string name="stop_music_on_task_clear">앱 종료시 음악 중지</string>
     <string name="use_login_for_browse_desc">표시되는 콘텐츠에 영향을 끼칠 수 있으며, 예를 들어 Premium 계정으로 로그인했다면 Premium 한정 앨범이 표시됩니다</string>
     <string name="use_login_for_browse">로그인한 계정으로 콘텐츠 탐색</string>
+    <string name="use_login_for_browse_label">로그인한 계정으로 콘텐츠 탐색</string>
     <string name="similar_to">아래 아티스트와 유사한 음악 추천</string>
     <string name="auto_skip_next_on_error_desc">끊김 없는 재생 경험 보장</string>
     <string name="disable_screenshot_desc">이 설정을 켜면, 스크린샷이 비활성화되고 최근 앱에서 보이는 앱 화면이 숨겨집니다.</string>

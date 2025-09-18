@@ -317,5 +317,6 @@
     <string name="clear_translation_models">Очистити моделі перекладу</string>
     <string name="use_login_for_browse_desc">Це може вплинути на те, який вміст ви бачите, і, наприклад, показує лише платні альбоми, якщо ви ввійшли в обліковий запис Premium</string>
     <string name="use_login_for_browse">Використовуйте логін для перегляду вмісту</string>
+    <string name="use_login_for_browse_label">Використовуйте логін для перегляду вмісту</string>
     <string name="action_login">Увійти</string>
 </resources>

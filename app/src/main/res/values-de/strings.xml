@@ -296,6 +296,7 @@
     <string name="auto_load_more_desc">Automatisches Hinzufügen weiterer Songs, wenn das Ende der Warteschlange erreicht ist, sofern möglich</string>
     <string name="filter_bookmarked">Lesezeichen</string>
     <string name="use_login_for_browse">Anmeldung zum Durchsuchen von Inhalten verwenden</string>
+    <string name="use_login_for_browse_label">Anmeldung zum Durchsuchen von Inhalten verwenden</string>
     <string name="use_login_for_browse_desc">Dies kann Einfluss darauf haben, welche Inhalte du siehst und zeigt zum Beispiel nur Premium-Alben an, wenn Sie mit einem Premium-Konto angemeldet sind</string>
     <string name="action_login">Anmelden</string>
 </resources>
