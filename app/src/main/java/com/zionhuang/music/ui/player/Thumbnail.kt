@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -24,7 +23,6 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.zionhuang.music.LocalPlayerConnection
 import com.zionhuang.music.constants.PlayerHorizontalPadding
-import com.zionhuang.music.constants.ShowChordsKey
 import com.zionhuang.music.constants.ShowLyricsKey
 import com.zionhuang.music.constants.ThumbnailCornerRadius
 import com.zionhuang.music.ui.component.Lyrics
@@ -42,20 +40,10 @@ fun Thumbnail(
     val error by playerConnection.error.collectAsState()
 
     val showLyrics by rememberPreference(ShowLyricsKey, false)
-    val showChordsState = rememberPreference(ShowChordsKey, false)
-    val showChords = showChordsState.value
-
-    LaunchedEffect(showLyrics, showChords) {
-        if (!showLyrics && showChords) {
-            showChordsState.value = false
-        }
-    }
 
     DisposableEffect(showLyrics) {
         currentView.keepScreenOn = showLyrics
-        onDispose {
-            currentView.keepScreenOn = false
-        }
+        onDispose { currentView.keepScreenOn = false }
     }
 
     Box(modifier = modifier) {
@@ -110,9 +98,9 @@ fun Thumbnail(
                 .padding(32.dp)
                 .align(Alignment.Center)
         ) {
-            error?.let { error ->
+            error?.let { err ->
                 PlaybackError(
-                    error = error,
+                    error = err,
                     retry = playerConnection.player::prepare
                 )
             }
