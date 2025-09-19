@@ -1,0 +1,14 @@
+﻿<resources>
+    <string name="playback_client">ไคลเอนต์การเล่น</string>
+    <string name="visitor_data">ข้อมูลผู้เยี่ยมชม</string>
+    <string name="locale_label">ภาษาและภูมิภาค</string>
+    <string name="proxy_label">พร็อกซี</string>
+    <string name="login_state">เข้าสู่ระบบแล้ว</string>
+    <string name="use_login_for_browse">ใช้การเข้าสู่ระบบเพื่อเรียกดูเนื้อหา</string>
+    <string name="use_login_for_browse_desc">ตัวเลือกนี้มีผลกับเนื้อหาที่คุณเห็น เช่น แสดงอัลบั้มเฉพาะสมาชิก Premium หากคุณเข้าสู่ระบบด้วยบัญชี Premium</string>
+    <string name="use_login_for_browse_label">ใช้การเข้าสู่ระบบสำหรับการเรียกดู</string>
+    <string name="yes">ใช่</string>
+    <string name="no">ไม่ใช่</string>
+    <string name="unknown">ไม่ทราบ</string>
+    <string name="copied">คัดลอกไปยังคลิปบอร์ดแล้ว</string>
+</resources>

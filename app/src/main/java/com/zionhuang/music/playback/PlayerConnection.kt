@@ -71,6 +71,9 @@ class PlayerConnection(
             translating.value = false
         }
     }.stateIn(scope, SharingStarted.Lazily, null)
+    val currentChords = mediaMetadata.flatMapLatest { mediaMetadata ->
+        database.chords(mediaMetadata?.id)
+    }.stateIn(scope, SharingStarted.Lazily, null)
     val currentFormat = mediaMetadata.flatMapLatest { mediaMetadata ->
         database.format(mediaMetadata?.id)
     }
