@@ -27,6 +27,7 @@ import com.zionhuang.music.db.entities.ArtistEntity
 import com.zionhuang.music.db.entities.Event
 import com.zionhuang.music.db.entities.EventWithSong
 import com.zionhuang.music.db.entities.FormatEntity
+import com.zionhuang.music.db.entities.ChordsEntity
 import com.zionhuang.music.db.entities.LyricsEntity
 import com.zionhuang.music.db.entities.Playlist
 import com.zionhuang.music.db.entities.PlaylistEntity
@@ -296,6 +297,9 @@ interface DatabaseDao {
 
     @Query("SELECT * FROM lyrics WHERE id = :id")
     fun lyrics(id: String?): Flow<LyricsEntity?>
+
+    @Query("SELECT * FROM chords WHERE id = :id")
+    fun chords(id: String?): Flow<ChordsEntity?>
 
     @Transaction
     @Query("SELECT *, (SELECT COUNT(1) FROM song_artist_map JOIN song ON song_artist_map.songId = song.id WHERE artistId = artist.id AND song.inLibrary IS NOT NULL) AS songCount FROM artist WHERE songCount > 0 ORDER BY rowId")
@@ -819,6 +823,9 @@ interface DatabaseDao {
     fun upsert(lyrics: LyricsEntity)
 
     @Upsert
+    fun upsert(chords: ChordsEntity)
+
+    @Upsert
     fun upsert(format: FormatEntity)
 
     @Delete
@@ -846,6 +853,9 @@ interface DatabaseDao {
     fun delete(lyrics: LyricsEntity)
 
     @Delete
+    fun delete(chords: ChordsEntity)
+
+    @Delete
     fun delete(searchHistory: SearchHistory)
 
     @Delete
@@ -864,3 +874,4 @@ interface DatabaseDao {
         raw("PRAGMA wal_checkpoint(FULL)".toSQLiteQuery())
     }
 }
+

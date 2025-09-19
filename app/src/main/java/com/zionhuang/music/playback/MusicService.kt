@@ -72,10 +72,12 @@ import com.zionhuang.music.constants.PauseListenHistoryKey
 import com.zionhuang.music.constants.PersistentQueueKey
 import com.zionhuang.music.constants.PlayerVolumeKey
 import com.zionhuang.music.constants.RepeatModeKey
+import com.zionhuang.music.constants.ShowChordsKey
 import com.zionhuang.music.constants.ShowLyricsKey
 import com.zionhuang.music.constants.SkipSilenceKey
 import com.zionhuang.music.db.MusicDatabase
 import com.zionhuang.music.db.entities.Event
+import com.zionhuang.music.db.entities.ChordsEntity
 import com.zionhuang.music.db.entities.FormatEntity
 import com.zionhuang.music.db.entities.LyricsEntity
 import com.zionhuang.music.db.entities.RelatedSongMap
@@ -89,6 +91,7 @@ import com.zionhuang.music.extensions.findNextMediaItemById
 import com.zionhuang.music.extensions.mediaItems
 import com.zionhuang.music.extensions.metadata
 import com.zionhuang.music.extensions.toMediaItem
+import com.zionhuang.music.chords.ChordsHelper
 import com.zionhuang.music.lyrics.LyricsHelper
 import com.zionhuang.music.models.PersistQueue
 import com.zionhuang.music.models.toMediaMetadata
@@ -149,6 +152,9 @@ class MusicService : MediaLibraryService(),
 
     @Inject
     lateinit var lyricsHelper: LyricsHelper
+
+    @Inject
+    lateinit var chordsHelper: ChordsHelper
 
     @Inject
     lateinit var mediaLibrarySessionCallback: MediaLibrarySessionCallback
@@ -277,6 +283,25 @@ class MusicService : MediaLibraryService(),
                         LyricsEntity(
                             id = mediaMetadata.id,
                             lyrics = lyrics
+                        )
+                    )
+                }
+            }
+        }
+
+        combine(
+            currentMediaMetadata.distinctUntilChangedBy { it?.id },
+            dataStore.data.map { it[ShowChordsKey] ?: false }.distinctUntilChanged()
+        ) { mediaMetadata, showChords ->
+            mediaMetadata to showChords
+        }.collectLatest(scope) { (mediaMetadata, showChords) ->
+            if (showChords && mediaMetadata != null && database.chords(mediaMetadata.id).first() == null) {
+                val chords = chordsHelper.getChords(mediaMetadata)
+                database.query {
+                    upsert(
+                        ChordsEntity(
+                            id = mediaMetadata.id,
+                            chords = chords
                         )
                     )
                 }
