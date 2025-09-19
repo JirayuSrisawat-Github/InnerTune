@@ -291,7 +291,7 @@ class MusicService : MediaLibraryService(),
 
         combine(
             currentMediaMetadata.distinctUntilChangedBy { it?.id },
-            dataStore.data.map { it[ShowChordsKey] ?: true }.distinctUntilChanged()
+            dataStore.data.map { it[ShowChordsKey] ?: false }.distinctUntilChanged()
         ) { mediaMetadata, showChords ->
             mediaMetadata to showChords
         }.collectLatest(scope) { (mediaMetadata, showChords) ->
