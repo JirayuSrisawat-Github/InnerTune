@@ -1,6 +1,10 @@
 package com.zionhuang.music.ui.component
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.scroll
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,7 +20,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.lazy.scrollBy
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.CircularProgressIndicator
@@ -57,9 +60,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.input.pointer.PointerEventPass
-import androidx.compose.ui.input.pointer.awaitPointerEvent
-import androidx.compose.ui.input.pointer.awaitPointerEventScope
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
@@ -92,7 +92,8 @@ import com.zionhuang.music.ui.menu.LyricsMenu
 import com.zionhuang.music.ui.screens.settings.PlayerTextAlignment
 import com.zionhuang.music.utils.rememberEnumPreference
 import com.zionhuang.music.utils.rememberPreference
-import kotlin.math.coerceIn
+import kotlin.math.max
+import kotlin.math.min
 import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -230,16 +231,16 @@ fun Lyrics(
             ViewMode.Chords -> chordsListState
         }
         val baseSpeedPx = with(density) { 100.dp.toPx() }
-        val pxPerSecond = baseSpeedPx * autoScrollSpeed.coerceIn(0f, 1f)
+        val pxPerSecond = baseSpeedPx * clamp01(autoScrollSpeed)
         if (pxPerSecond <= 0f) return@LaunchedEffect
         var previousFrame = withFrameNanos { it }
         while (true) {
             val frameTime = withFrameNanos { it }
             val deltaSeconds = (frameTime - previousFrame) / 1_000_000_000f
             previousFrame = frameTime
-            val distance = pxPerSecond * deltaSeconds
+            val distance = (pxPerSecond * deltaSeconds).toFloat()
             if (distance <= 0f) continue
-            val consumed = targetState.scrollBy(distance)
+            val consumed = targetState.scrollByPixels(distance)
             if (consumed < distance) {
                 autoScrollActive = false
                 break
@@ -254,18 +255,21 @@ fun Lyrics(
         onDispose { autoScrollPausedByPress = false }
     }
 
-    val pointerModifier = Modifier.pointerInput(autoScrollActive) {
-        if (!autoScrollActive) return@pointerInput
-        awaitPointerEventScope {
-            try {
-                while (true) {
-                    val event = awaitPointerEvent(PointerEventPass.Main)
-                    autoScrollPausedByPress = event.changes.any { it.pressed }
-                }
-            } finally {
-                autoScrollPausedByPress = false
-            }
+    val pointerModifier = if (autoScrollActive) {
+        Modifier.pointerInput(autoScrollActive) {
+            detectTapGestures(
+                onPress = {
+                    autoScrollPausedByPress = true
+                    try {
+                        tryAwaitRelease()
+                    } finally {
+                        autoScrollPausedByPress = false
+                    }
+                },
+            )
         }
+    } else {
+        Modifier
     }
 
     val showTranslationToggle = BuildConfig.FLAVOR != "foss" && viewMode == ViewMode.Lyrics
@@ -363,7 +367,7 @@ fun Lyrics(
             ) {
                 AutoScrollSpeedSheet(
                     autoScrollSpeed = autoScrollSpeed,
-                    onSpeedChange = { autoScrollSpeed = it.coerceIn(0f, 1f) },
+                    onSpeedChange = { autoScrollSpeed = clamp01(it) },
                     autoScrollActive = autoScrollActive,
                     onToggleAutoScroll = {
                         autoScrollActive = !autoScrollActive
@@ -682,7 +686,8 @@ private fun AutoScrollSpeedSheet(
     autoScrollActive: Boolean,
     onToggleAutoScroll: () -> Unit,
 ) {
-    val percent = (autoScrollSpeed.coerceIn(0f, 1f) * 100f).roundToInt()
+    val clampedSpeed = clamp01(autoScrollSpeed)
+    val percent = (clampedSpeed * 100f).roundToInt()
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -712,8 +717,8 @@ private fun AutoScrollSpeedSheet(
             modifier = Modifier.fillMaxWidth(),
         ) {
             Slider(
-                value = autoScrollSpeed.coerceIn(0f, 1f),
-                onValueChange = { onSpeedChange(it.coerceIn(0f, 1f)) },
+                value = clampedSpeed,
+                onValueChange = { onSpeedChange(clamp01(it)) },
                 modifier = Modifier.weight(1f),
             )
             Spacer(modifier = Modifier.width(16.dp))
@@ -762,10 +767,22 @@ private fun AutoScrollPresetChip(
     onClick: (Float) -> Unit,
 ) {
     AssistChip(
-        onClick = { onClick(value.coerceIn(0f, 1f)) },
+        onClick = { onClick(clamp01(value)) },
         label = { Text(text = label) },
     )
 }
+
+@OptIn(ExperimentalFoundationApi::class)
+private suspend fun LazyListState.scrollByPixels(distance: Float): Float {
+    if (distance == 0f) return 0f
+    var consumed = 0f
+    scroll {
+        consumed = scrollBy(distance)
+    }
+    return consumed
+}
+
+private fun clamp01(value: Float): Float = max(0f, min(1f, value))
 
 private fun minLineHeightStyle(style: TextStyle): TextStyle {
     val fontSize = if (style.fontSize != TextUnit.Unspecified) style.fontSize else 16.sp
