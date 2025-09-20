@@ -16,6 +16,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.scrollBy
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.CircularProgressIndicator
@@ -57,6 +58,7 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.awaitPointerEvent
 import androidx.compose.ui.input.pointer.awaitPointerEventScope
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
@@ -98,6 +100,8 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 
 private enum class ViewMode { Lyrics, Chords }
+
+const val animateScrollDuration = 300L
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -255,7 +259,7 @@ fun Lyrics(
         awaitPointerEventScope {
             try {
                 while (true) {
-                    val event = awaitPointerEvent(PointerEventPass.Passive)
+                    val event = awaitPointerEvent(PointerEventPass.Main)
                     autoScrollPausedByPress = event.changes.any { it.pressed }
                 }
             } finally {
@@ -479,7 +483,7 @@ private fun LyricsContent(
                     .nestedScroll(remember(autoScrollActive) {
                         object : NestedScrollConnection {
                             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-                                if (autoScrollActive && source == NestedScrollSource.User) {
+                                if (autoScrollActive && source == NestedScrollSource.UserInput) {
                                     onUserScroll()
                                 }
                                 return Offset.Zero
@@ -595,7 +599,7 @@ private fun ChordsContent(
                     .nestedScroll(remember {
                         object : NestedScrollConnection {
                             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-                                if (source == NestedScrollSource.User) {
+                                if (source == NestedScrollSource.UserInput) {
                                     onUserScroll()
                                 }
                                 return Offset.Zero
