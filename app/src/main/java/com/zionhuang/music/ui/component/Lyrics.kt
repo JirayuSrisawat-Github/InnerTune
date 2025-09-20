@@ -1,9 +1,7 @@
 package com.zionhuang.music.ui.component
 
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.scroll
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -772,14 +770,9 @@ private fun AutoScrollPresetChip(
     )
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 private suspend fun LazyListState.scrollByPixels(distance: Float): Float {
     if (distance == 0f) return 0f
-    var consumed = 0f
-    scroll {
-        consumed = scrollBy(distance)
-    }
-    return consumed
+    return scrollBy(distance)
 }
 
 private fun clamp01(value: Float): Float = max(0f, min(1f, value))
