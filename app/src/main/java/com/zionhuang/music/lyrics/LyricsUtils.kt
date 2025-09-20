@@ -8,6 +8,11 @@ object LyricsUtils {
     val LINE_REGEX = "((\\[\\d\\d:\\d\\d\\.\\d{2,3}\\])+)(.+)".toRegex()
     val TIME_REGEX = "\\[(\\d\\d):(\\d\\d)\\.(\\d{2,3})\\]".toRegex()
 
+    fun isSyncedLyrics(lyrics: String): Boolean {
+        val firstLine = lyrics.lineSequence().firstOrNull { it.isNotBlank() } ?: return false
+        return LINE_REGEX.matches(firstLine.trim())
+    }
+
     fun parseLyrics(lyrics: String): List<LyricsEntry> =
         lyrics.lines()
             .flatMap { line ->

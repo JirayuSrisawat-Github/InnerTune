@@ -55,7 +55,13 @@ import com.zionhuang.music.db.entities.LyricsEntity.Companion.LYRICS_NOT_FOUND
 import com.zionhuang.music.lyrics.LyricsEntry
 import com.zionhuang.music.lyrics.LyricsEntry.Companion.HEAD_LYRICS_ENTRY
 import com.zionhuang.music.lyrics.LyricsUtils.findCurrentLineIndex
+import com.zionhuang.music.lyrics.LyricsUtils.isSyncedLyrics
 import com.zionhuang.music.lyrics.LyricsUtils.parseLyrics
+import com.zionhuang.music.lyrics.chords.LyricLine
+import com.zionhuang.music.lyrics.chords.RobustChordParser
+import com.zionhuang.music.lyrics.chords.Section
+import com.zionhuang.music.lyrics.chords.SongText
+import com.zionhuang.music.ui.component.PlayerTextScreen
 import com.zionhuang.music.ui.component.shimmer.ShimmerHost
 import com.zionhuang.music.ui.component.shimmer.TextPlaceholder
 import com.zionhuang.music.ui.menu.LyricsMenu
@@ -65,6 +71,7 @@ import com.zionhuang.music.utils.rememberEnumPreference
 import com.zionhuang.music.utils.rememberPreference
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlin.runCatching
 import kotlin.time.Duration.Companion.seconds
 
 @Composable
@@ -87,13 +94,56 @@ fun Lyrics(
         else lyricsEntity?.lyrics
     }
 
-    val lines = remember(lyrics) {
-        if (lyrics == null || lyrics == LYRICS_NOT_FOUND) emptyList()
-        else if (lyrics.startsWith("[")) listOf(HEAD_LYRICS_ENTRY) + parseLyrics(lyrics)
-        else lyrics.lines().mapIndexed { index, line -> LyricsEntry(index * 100L, line) }
-    }
     val isSynced = remember(lyrics) {
-        !lyrics.isNullOrEmpty() && lyrics.startsWith("[")
+        !lyrics.isNullOrEmpty() && lyrics != LYRICS_NOT_FOUND && isSyncedLyrics(lyrics)
+    }
+    val lines = remember(lyrics, isSynced) {
+        when {
+            lyrics == null || lyrics == LYRICS_NOT_FOUND -> emptyList()
+            isSynced -> listOf(HEAD_LYRICS_ENTRY) + parseLyrics(lyrics)
+            else -> emptyList()
+        }
+    }
+    val chordParser = remember { RobustChordParser() }
+    val chordSongText = remember(lyrics, mediaMetadata?.id, isSynced) {
+        val content = lyrics
+        if (!isSynced && !content.isNullOrBlank() && content != LYRICS_NOT_FOUND) {
+            val fallback = content.lines()
+                .takeIf { it.isNotEmpty() }
+                ?.let { lines ->
+                    SongText(
+                        id = mediaMetadata?.id ?: content.hashCode().toString(),
+                        title = mediaMetadata?.title ?: "",
+                        artist = mediaMetadata?.artists?.firstOrNull()?.name,
+                        sections = listOf(
+                            Section(
+                                tag = null,
+                                lines = lines.map { lineText ->
+                                    LyricLine(
+                                        raw = lineText,
+                                        cleanLyrics = lineText,
+                                        tokens = emptyList(),
+                                        chordSpans = emptyList()
+                                    )
+                                }
+                            )
+                        )
+                    )
+                }
+            runCatching {
+                chordParser.parseSong(
+                    songId = mediaMetadata?.id ?: content.hashCode().toString(),
+                    title = mediaMetadata?.title ?: "",
+                    artist = mediaMetadata?.artists?.firstOrNull()?.name,
+                    rawLyrics = content
+                )
+            }.getOrNull() ?: fallback
+        } else {
+            null
+        }
+    }
+    val plainTextLines = remember(lyrics) {
+        if (lyrics == null || lyrics == LYRICS_NOT_FOUND) emptyList() else lyrics.lines()
     }
 
     var currentLineIndex by remember {
@@ -112,8 +162,8 @@ fun Lyrics(
         mutableStateOf(false)
     }
 
-    LaunchedEffect(lyrics) {
-        if (lyrics.isNullOrEmpty() || !lyrics.startsWith("[")) {
+    LaunchedEffect(lyrics, isSynced) {
+        if (lyrics.isNullOrEmpty() || !isSynced) {
             currentLineIndex = -1
             return@LaunchedEffect
         }
@@ -156,70 +206,109 @@ fun Lyrics(
             .fillMaxSize()
             .padding(bottom = 12.dp)
     ) {
-        LazyColumn(
-            state = lazyListState,
-            contentPadding = WindowInsets.systemBars
-                .only(WindowInsetsSides.Top)
-                .add(WindowInsets(top = maxHeight / 2, bottom = maxHeight / 2))
-                .asPaddingValues(),
-            modifier = Modifier
-                .fadingEdge(vertical = 64.dp)
-                .nestedScroll(remember {
-                    object : NestedScrollConnection {
-                        override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
-                            lastPreviewTime = System.currentTimeMillis()
-                            return super.onPostScroll(consumed, available, source)
-                        }
-
-                        override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
-                            lastPreviewTime = System.currentTimeMillis()
-                            return super.onPostFling(consumed, available)
-                        }
-                    }
-                })
-        ) {
-            val displayedCurrentLineIndex = if (isSeeking) deferredCurrentLineIndex else currentLineIndex
-
-            if (lyrics == null || translating) {
-                item {
-                    ShimmerHost {
-                        repeat(10) {
-                            Box(
-                                contentAlignment = when (playerTextAlignment) {
-                                    PlayerTextAlignment.SIDED -> Alignment.CenterStart
-                                    PlayerTextAlignment.CENTER -> Alignment.Center
-                                },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 24.dp, vertical = 4.dp)
-                            ) {
-                                TextPlaceholder()
+        when {
+            lyrics == null || translating -> {
+                LazyColumn(
+                    state = lazyListState,
+                    contentPadding = WindowInsets.systemBars
+                        .only(WindowInsetsSides.Top)
+                        .add(WindowInsets(top = maxHeight / 2, bottom = maxHeight / 2))
+                        .asPaddingValues(),
+                    modifier = Modifier
+                        .fadingEdge(vertical = 64.dp)
+                ) {
+                    item {
+                        ShimmerHost {
+                            repeat(10) {
+                                Box(
+                                    contentAlignment = when (playerTextAlignment) {
+                                        PlayerTextAlignment.SIDED -> Alignment.CenterStart
+                                        PlayerTextAlignment.CENTER -> Alignment.Center
+                                    },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 24.dp, vertical = 4.dp)
+                                ) {
+                                    TextPlaceholder()
+                                }
                             }
                         }
                     }
                 }
-            } else {
-                itemsIndexed(
-                    items = lines
-                ) { index, item ->
-                    Text(
-                        text = item.text,
-                        fontSize = 20.sp,
-                        color = if (index == displayedCurrentLineIndex) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary,
-                        textAlign = when (playerTextAlignment) {
-                            PlayerTextAlignment.SIDED -> TextAlign.Start
-                            PlayerTextAlignment.CENTER -> TextAlign.Center
-                        },
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable(enabled = isSynced) {
-                                playerConnection.player.seekTo(item.time)
-                                lastPreviewTime = 0L
+            }
+            isSynced -> {
+                LazyColumn(
+                    state = lazyListState,
+                    contentPadding = WindowInsets.systemBars
+                        .only(WindowInsetsSides.Top)
+                        .add(WindowInsets(top = maxHeight / 2, bottom = maxHeight / 2))
+                        .asPaddingValues(),
+                    modifier = Modifier
+                        .fadingEdge(vertical = 64.dp)
+                        .nestedScroll(remember {
+                            object : NestedScrollConnection {
+                                override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
+                                    lastPreviewTime = System.currentTimeMillis()
+                                    return super.onPostScroll(consumed, available, source)
+                                }
+
+                                override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
+                                    lastPreviewTime = System.currentTimeMillis()
+                                    return super.onPostFling(consumed, available)
+                                }
                             }
-                            .padding(horizontal = 24.dp, vertical = 8.dp)
-                            .alpha(if (!isSynced || index == displayedCurrentLineIndex) 1f else 0.5f)
-                    )
+                        })
+                ) {
+                    val displayedCurrentLineIndex = if (isSeeking) deferredCurrentLineIndex else currentLineIndex
+                    itemsIndexed(lines) { index, item ->
+                        Text(
+                            text = item.text,
+                            fontSize = 20.sp,
+                            color = if (index == displayedCurrentLineIndex) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary,
+                            textAlign = when (playerTextAlignment) {
+                                PlayerTextAlignment.SIDED -> TextAlign.Start
+                                PlayerTextAlignment.CENTER -> TextAlign.Center
+                            },
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable(enabled = isSynced) {
+                                    playerConnection.player.seekTo(item.time)
+                                    lastPreviewTime = 0L
+                                }
+                                .padding(horizontal = 24.dp, vertical = 8.dp)
+                                .alpha(if (!isSynced || index == displayedCurrentLineIndex) 1f else 0.5f)
+                        )
+                    }
+                }
+            }
+            chordSongText != null -> {
+                PlayerTextScreen(
+                    songText = chordSongText,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+            else -> {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 24.dp, vertical = 16.dp),
+                ) {
+                    itemsIndexed(plainTextLines) { _, line ->
+                        Text(
+                            text = line,
+                            fontSize = 20.sp,
+                            color = MaterialTheme.colorScheme.secondary,
+                            textAlign = when (playerTextAlignment) {
+                                PlayerTextAlignment.SIDED -> TextAlign.Start
+                                PlayerTextAlignment.CENTER -> TextAlign.Center
+                            },
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 8.dp)
+                        )
+                    }
                 }
             }
         }
