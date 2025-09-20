@@ -54,8 +54,11 @@ import com.zionhuang.music.constants.TranslateLyricsKey
 import com.zionhuang.music.db.entities.LyricsEntity.Companion.LYRICS_NOT_FOUND
 import com.zionhuang.music.lyrics.LyricsEntry
 import com.zionhuang.music.lyrics.LyricsEntry.Companion.HEAD_LYRICS_ENTRY
+import com.zionhuang.music.lyrics.LyricsUtils
 import com.zionhuang.music.lyrics.LyricsUtils.findCurrentLineIndex
 import com.zionhuang.music.lyrics.LyricsUtils.parseLyrics
+import com.zionhuang.music.lyrics.chords.RobustChordParser
+import com.zionhuang.music.lyrics.chords.hasChords
 import com.zionhuang.music.ui.component.shimmer.ShimmerHost
 import com.zionhuang.music.ui.component.shimmer.TextPlaceholder
 import com.zionhuang.music.ui.menu.LyricsMenu
@@ -75,6 +78,7 @@ fun Lyrics(
     val playerConnection = LocalPlayerConnection.current ?: return
     val menuState = LocalMenuState.current
     val density = LocalDensity.current
+    val chordParser = remember { RobustChordParser() }
 
     val playerTextAlignment by rememberEnumPreference(PlayerTextAlignmentKey, PlayerTextAlignment.CENTER)
     var translationEnabled by rememberPreference(TranslateLyricsKey, false)
@@ -87,14 +91,43 @@ fun Lyrics(
         else lyricsEntity?.lyrics
     }
 
-    val lines = remember(lyrics) {
-        if (lyrics == null || lyrics == LYRICS_NOT_FOUND) emptyList()
-        else if (lyrics.startsWith("[")) listOf(HEAD_LYRICS_ENTRY) + parseLyrics(lyrics)
-        else lyrics.lines().mapIndexed { index, line -> LyricsEntry(index * 100L, line) }
+    val hasTimestamps = remember(lyrics) {
+        !lyrics.isNullOrEmpty() && LyricsUtils.LINE_REGEX.containsMatchIn(lyrics)
     }
-    val isSynced = remember(lyrics) {
-        !lyrics.isNullOrEmpty() && lyrics.startsWith("[")
+
+    val chordSongText = remember(lyrics, translating, hasTimestamps, mediaMetadata) {
+        val raw = lyrics
+        if (raw.isNullOrBlank() || translating || hasTimestamps) {
+            null
+        } else if (chordParser.containsChordNotation(raw)) {
+            val id = mediaMetadata?.id ?: raw.hashCode().toString()
+            val title = mediaMetadata?.title ?: id
+            val artist = mediaMetadata?.artists
+                ?.joinToString(separator = ", ") { it.name }
+                ?.takeIf { it.isNotBlank() }
+            runCatching {
+                chordParser.parseSongText(
+                    id = id,
+                    title = title,
+                    artist = artist,
+                    rawText = raw
+                )
+            }.getOrNull()
+        } else {
+            null
+        }
     }
+    val showChordContent = chordSongText?.hasChords() == true
+
+    val lines = remember(lyrics, hasTimestamps, showChordContent) {
+        when {
+            lyrics == null || lyrics == LYRICS_NOT_FOUND -> emptyList()
+            hasTimestamps -> listOf(HEAD_LYRICS_ENTRY) + parseLyrics(lyrics)
+            showChordContent -> emptyList()
+            else -> lyrics.lines().mapIndexed { index, line -> LyricsEntry(index * 100L, line) }
+        }
+    }
+    val isSynced = hasTimestamps
 
     var currentLineIndex by remember {
         mutableIntStateOf(-1)
@@ -112,8 +145,8 @@ fun Lyrics(
         mutableStateOf(false)
     }
 
-    LaunchedEffect(lyrics) {
-        if (lyrics.isNullOrEmpty() || !lyrics.startsWith("[")) {
+    LaunchedEffect(lyrics, hasTimestamps) {
+        if (lyrics.isNullOrEmpty() || !hasTimestamps) {
             currentLineIndex = -1
             return@LaunchedEffect
         }
@@ -150,12 +183,57 @@ fun Lyrics(
         }
     }
 
-    BoxWithConstraints(
-        contentAlignment = Alignment.Center,
-        modifier = modifier
-            .fillMaxSize()
-            .padding(bottom = 12.dp)
-    ) {
+    if (showChordContent && chordSongText != null) {
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = modifier
+                .fillMaxSize()
+                .padding(bottom = 12.dp)
+        ) {
+            ChordLyricsContent(
+                songText = chordSongText,
+                modifier = Modifier.fillMaxSize()
+            )
+            mediaMetadata?.let { mediaMetadata ->
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(end = 12.dp)
+                ) {
+                    if (BuildConfig.FLAVOR != "foss") {
+                        IconButton(
+                            onClick = {
+                                translationEnabled = !translationEnabled
+                            }
+                        ) {
+                            Icon(
+                                painter = painterResource(id = R.drawable.translate),
+                                contentDescription = null,
+                                tint = LocalContentColor.current.copy(alpha = if (translationEnabled) 1f else 0.3f)
+                            )
+                        }
+                    }
+
+                    IconButton(
+                        onClick = {
+                            menuState.show {
+                                LyricsMenu(
+                                    lyricsProvider = { lyricsEntity },
+                                    mediaMetadataProvider = { mediaMetadata },
+                                    onDismiss = menuState::dismiss
+                                )
+                            }
+                        }
+                    ) {
+                        Icon(
+                            painter = painterResource(id = R.drawable.more_horiz),
+                            contentDescription = null
+                        )
+                    }
+                }
+            }
+        }
+    } else {
         LazyColumn(
             state = lazyListState,
             contentPadding = WindowInsets.systemBars
