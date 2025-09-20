@@ -378,6 +378,7 @@ fun Lyrics(
         }
     }
 }
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun PlayerTopBar(
     viewMode: ViewMode,
