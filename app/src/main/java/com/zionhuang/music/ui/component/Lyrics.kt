@@ -59,7 +59,9 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
@@ -111,12 +113,15 @@ fun Lyrics(
     val playerConnection = LocalPlayerConnection.current ?: return
     val menuState = LocalMenuState.current
     val density = LocalDensity.current
+    val context = LocalContext.current
+    val view = LocalView.current
 
     val snackbarHostState = remember { SnackbarHostState() }
     var showSpeedSheet by rememberSaveable { mutableStateOf(false) }
     var autoScrollSpeed by rememberSaveable { mutableStateOf(0.4f) }
     var autoScrollActive by rememberSaveable { mutableStateOf(false) }
     var autoScrollPausedByPress by remember { mutableStateOf(false) }
+    var hasAnnouncedInitial by remember { mutableStateOf(false) }
 
     val showChordsState = rememberPreference(ShowChordsKey, false)
     val playerTextAlignment by rememberEnumPreference(PlayerTextAlignmentKey, PlayerTextAlignment.CENTER)
@@ -192,6 +197,18 @@ fun Lyrics(
     }
 
     val viewMode = if (showChordsState.value) ViewMode.Chords else ViewMode.Lyrics
+
+    LaunchedEffect(viewMode) {
+        if (hasAnnouncedInitial) {
+            val announcementRes = when (viewMode) {
+                ViewMode.Lyrics -> R.string.lyrics_tab
+                ViewMode.Chords -> R.string.chords_tab
+            }
+            view.announceForAccessibility(context.getString(announcementRes))
+        } else {
+            hasAnnouncedInitial = true
+        }
+    }
     val lyricsListState = rememberLazyListState()
     val chordsListState = rememberLazyListState()
     val canAutoScroll = when (viewMode) {
@@ -251,6 +268,16 @@ fun Lyrics(
             autoScrollPausedByPress = false
         }
         onDispose { autoScrollPausedByPress = false }
+    }
+
+    DisposableEffect(autoScrollActive, view) {
+        val previousKeepScreenOn = view.keepScreenOn
+        if (autoScrollActive) {
+            view.keepScreenOn = true
+        }
+        onDispose {
+            view.keepScreenOn = previousKeepScreenOn
+        }
     }
 
     val pointerModifier = if (autoScrollActive) {

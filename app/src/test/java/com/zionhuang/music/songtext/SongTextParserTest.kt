@@ -57,6 +57,27 @@ class SongTextParserTest {
         val second = line.chordSpans[1]
         assertEquals("C", first.label)
         assertEquals("G", second.label)
-        assertTrue(second.startColumn >= first.startColumn + 2)
+        val minimumSpacing = first.startColumn + first.label.length + 1
+        assertTrue(second.startColumn >= minimumSpacing)
+    }
+
+    @Test
+    fun respectsChordLabelWidthWhenSpacing() {
+        val raw = "[Am][G]Test"
+        val songText = SongTextParser.parse(
+            id = "test",
+            title = "Test",
+            artist = null,
+            raw = raw,
+        )
+
+        val line = songText.sections.first().lines.first()
+        assertEquals(2, line.chordSpans.size)
+        val first = line.chordSpans[0]
+        val second = line.chordSpans[1]
+        assertEquals("Am", first.label)
+        assertEquals("G", second.label)
+        val minimumSpacing = first.startColumn + first.label.length + 1
+        assertTrue(second.startColumn >= minimumSpacing)
     }
 }

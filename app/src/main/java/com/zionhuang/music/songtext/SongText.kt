@@ -1,7 +1,6 @@
 package com.zionhuang.music.songtext
 
 import android.util.Log
-import kotlin.math.max
 
 private const val TAG = "SongTextParser"
 
@@ -248,20 +247,20 @@ object SongTextParser {
         if (anchors.isEmpty()) return emptyList()
         val spans = mutableListOf<ChordSpan>()
         anchors.sortedBy { it.charIndex }.forEach { anchor ->
-            var column = anchor.charIndex
+            var column = anchor.charIndex.coerceAtLeast(0)
             if (spans.isNotEmpty()) {
                 val previousIndex = spans.lastIndex
-                val previous = spans[previousIndex]
-                if (column - previous.startColumn <= 1) {
-                    if (column == previous.startColumn && previous.startColumn > 0) {
-                        spans[previousIndex] = previous.copy(startColumn = previous.startColumn - 1)
-                        column = max(column, spans[previousIndex].startColumn + 2)
-                    } else {
-                        column = previous.startColumn + 2
-                    }
+                var previous = spans[previousIndex]
+                if (column <= previous.startColumn && previous.startColumn > 0) {
+                    previous = previous.copy(startColumn = previous.startColumn - 1)
+                    spans[previousIndex] = previous
+                }
+                val minimumStart = previous.startColumn + previous.label.length + 1
+                if (column < minimumStart) {
+                    column = minimumStart
                 }
             }
-            spans.add(ChordSpan(startColumn = column.coerceAtLeast(0), label = anchor.chord.label))
+            spans.add(ChordSpan(startColumn = column, label = anchor.chord.label))
         }
         return spans
     }
