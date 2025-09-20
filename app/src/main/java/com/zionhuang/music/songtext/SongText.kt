@@ -1,6 +1,7 @@
 package com.zionhuang.music.songtext
 
 import android.util.Log
+import kotlin.math.max
 
 private const val TAG = "SongTextParser"
 
@@ -251,9 +252,18 @@ object SongTextParser {
             if (spans.isNotEmpty()) {
                 val previousIndex = spans.lastIndex
                 var previous = spans[previousIndex]
-                if (column <= previous.startColumn && previous.startColumn > 0) {
-                    previous = previous.copy(startColumn = previous.startColumn - 1)
-                    spans[previousIndex] = previous
+                if (column <= previous.startColumn) {
+                    val minPreviousStart = if (previousIndex == 0) {
+                        0
+                    } else {
+                        val before = spans[previousIndex - 1]
+                        before.startColumn + before.label.length + 1
+                    }
+                    val shiftedStart = max(minPreviousStart, column - 1)
+                    if (shiftedStart < previous.startColumn) {
+                        previous = previous.copy(startColumn = shiftedStart)
+                        spans[previousIndex] = previous
+                    }
                 }
                 val minimumStart = previous.startColumn + previous.label.length + 1
                 if (column < minimumStart) {
@@ -297,7 +307,12 @@ object SongTextParser {
         val withoutBars = trimmed.trim('|')
         val withoutDashes = withoutBars.trim('-', '–', '—')
         if (withoutDashes.isEmpty()) return null
-        val stripped = if (withoutDashes.startsWith("(") && withoutDashes.endsWith(")") && withoutDashes.count { it == '(' } == 1 && withoutDashes.count { it == ')' } == 1) {
+        val stripped = if (
+            withoutDashes.startsWith("(") &&
+            withoutDashes.endsWith(")") &&
+            withoutDashes.count { it == '(' } == 1 &&
+            withoutDashes.count { it == ')' } == 1
+        ) {
             withoutDashes.substring(1, withoutDashes.lastIndex)
         } else {
             withoutDashes

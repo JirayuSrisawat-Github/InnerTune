@@ -80,4 +80,26 @@ class SongTextParserTest {
         val minimumSpacing = first.startColumn + first.label.length + 1
         assertTrue(second.startColumn >= minimumSpacing)
     }
+
+    @Test
+    fun parsesChordLinePairedWithLyrics() {
+        val raw = """
+            C       G
+            Hello world
+        """.trimIndent()
+        val songText = SongTextParser.parse(
+            id = "test",
+            title = "Test",
+            artist = null,
+            raw = raw,
+        )
+
+        val line = songText.sections.first().lines.first()
+        assertEquals("Hello world", line.text)
+        assertEquals(2, line.chordSpans.size)
+        assertEquals("C", line.chordSpans[0].label)
+        assertEquals(0, line.chordSpans[0].startColumn)
+        assertEquals("G", line.chordSpans[1].label)
+        assertEquals(8, line.chordSpans[1].startColumn)
+    }
 }
