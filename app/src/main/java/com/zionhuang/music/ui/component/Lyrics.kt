@@ -52,14 +52,16 @@ import com.zionhuang.music.R
 import com.zionhuang.music.constants.PlayerTextAlignmentKey
 import com.zionhuang.music.constants.TranslateLyricsKey
 import com.zionhuang.music.db.entities.LyricsEntity.Companion.LYRICS_NOT_FOUND
-import com.zionhuang.music.lyrics.LyricsEntry
 import com.zionhuang.music.lyrics.LyricsEntry.Companion.HEAD_LYRICS_ENTRY
 import com.zionhuang.music.lyrics.LyricsUtils.findCurrentLineIndex
 import com.zionhuang.music.lyrics.LyricsUtils.parseLyrics
+import com.zionhuang.music.lyrics.LyricsEntry
+import com.zionhuang.music.lyrics.player.SongTextParser
 import com.zionhuang.music.ui.component.shimmer.ShimmerHost
 import com.zionhuang.music.ui.component.shimmer.TextPlaceholder
 import com.zionhuang.music.ui.menu.LyricsMenu
 import com.zionhuang.music.ui.screens.settings.PlayerTextAlignment
+import com.zionhuang.music.ui.component.playertext.PlayerTextScreen
 import com.zionhuang.music.ui.utils.fadingEdge
 import com.zionhuang.music.utils.rememberEnumPreference
 import com.zionhuang.music.utils.rememberPreference
@@ -94,6 +96,33 @@ fun Lyrics(
     }
     val isSynced = remember(lyrics) {
         !lyrics.isNullOrEmpty() && lyrics.startsWith("[")
+    }
+
+    val songTextParser = remember { SongTextParser() }
+    val showTextPlayer = remember(lyrics, translating) {
+        !translating && !lyrics.isNullOrEmpty() && lyrics != LYRICS_NOT_FOUND && !lyrics.startsWith("[")
+    }
+    val songText = remember(showTextPlayer, lyrics, mediaMetadata) {
+        if (!showTextPlayer) {
+            null
+        } else {
+            val currentLyrics = lyrics ?: return@remember null
+            runCatching {
+                val title = mediaMetadata?.title?.takeIf { it.isNotBlank() }
+                    ?: mediaMetadata?.id
+                    ?: "Song"
+                val artist = mediaMetadata?.artists
+                    ?.joinToString(separator = ", ") { it.name }
+                    ?.takeIf { it.isNotBlank() }
+                val songId = mediaMetadata?.id ?: title.hashCode().toString()
+                songTextParser.parse(
+                    id = songId,
+                    title = title,
+                    artist = artist,
+                    rawText = currentLyrics
+                )
+            }.getOrNull()
+        }
     }
 
     var currentLineIndex by remember {
@@ -156,70 +185,77 @@ fun Lyrics(
             .fillMaxSize()
             .padding(bottom = 12.dp)
     ) {
-        LazyColumn(
-            state = lazyListState,
-            contentPadding = WindowInsets.systemBars
-                .only(WindowInsetsSides.Top)
-                .add(WindowInsets(top = maxHeight / 2, bottom = maxHeight / 2))
-                .asPaddingValues(),
-            modifier = Modifier
-                .fadingEdge(vertical = 64.dp)
-                .nestedScroll(remember {
-                    object : NestedScrollConnection {
-                        override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
-                            lastPreviewTime = System.currentTimeMillis()
-                            return super.onPostScroll(consumed, available, source)
-                        }
-
-                        override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
-                            lastPreviewTime = System.currentTimeMillis()
-                            return super.onPostFling(consumed, available)
-                        }
-                    }
-                })
-        ) {
-            val displayedCurrentLineIndex = if (isSeeking) deferredCurrentLineIndex else currentLineIndex
-
-            if (lyrics == null || translating) {
-                item {
-                    ShimmerHost {
-                        repeat(10) {
-                            Box(
-                                contentAlignment = when (playerTextAlignment) {
-                                    PlayerTextAlignment.SIDED -> Alignment.CenterStart
-                                    PlayerTextAlignment.CENTER -> Alignment.Center
-                                },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 24.dp, vertical = 4.dp)
-                            ) {
-                                TextPlaceholder()
-                            }
+        when {
+            lyrics == null || translating -> {
+                ShimmerHost {
+                    repeat(10) {
+                        Box(
+                            contentAlignment = when (playerTextAlignment) {
+                                PlayerTextAlignment.SIDED -> Alignment.CenterStart
+                                PlayerTextAlignment.CENTER -> Alignment.Center
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 24.dp, vertical = 4.dp)
+                        ) {
+                            TextPlaceholder()
                         }
                     }
                 }
-            } else {
-                itemsIndexed(
-                    items = lines
-                ) { index, item ->
-                    Text(
-                        text = item.text,
-                        fontSize = 20.sp,
-                        color = if (index == displayedCurrentLineIndex) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary,
-                        textAlign = when (playerTextAlignment) {
-                            PlayerTextAlignment.SIDED -> TextAlign.Start
-                            PlayerTextAlignment.CENTER -> TextAlign.Center
-                        },
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable(enabled = isSynced) {
-                                playerConnection.player.seekTo(item.time)
-                                lastPreviewTime = 0L
+            }
+            showTextPlayer && songText != null -> {
+                PlayerTextScreen(
+                    songText = songText,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+            else -> {
+                LazyColumn(
+                    state = lazyListState,
+                    contentPadding = WindowInsets.systemBars
+                        .only(WindowInsetsSides.Top)
+                        .add(WindowInsets(top = maxHeight / 2, bottom = maxHeight / 2))
+                        .asPaddingValues(),
+                    modifier = Modifier
+                        .fadingEdge(vertical = 64.dp)
+                        .nestedScroll(remember {
+                            object : NestedScrollConnection {
+                                override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
+                                    lastPreviewTime = System.currentTimeMillis()
+                                    return super.onPostScroll(consumed, available, source)
+                                }
+
+                                override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
+                                    lastPreviewTime = System.currentTimeMillis()
+                                    return super.onPostFling(consumed, available)
+                                }
                             }
-                            .padding(horizontal = 24.dp, vertical = 8.dp)
-                            .alpha(if (!isSynced || index == displayedCurrentLineIndex) 1f else 0.5f)
-                    )
+                        })
+                ) {
+                    val displayedCurrentLineIndex = if (isSeeking) deferredCurrentLineIndex else currentLineIndex
+
+                    itemsIndexed(
+                        items = lines
+                    ) { index, item ->
+                        Text(
+                            text = item.text,
+                            fontSize = 20.sp,
+                            color = if (index == displayedCurrentLineIndex) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary,
+                            textAlign = when (playerTextAlignment) {
+                                PlayerTextAlignment.SIDED -> TextAlign.Start
+                                PlayerTextAlignment.CENTER -> TextAlign.Center
+                            },
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable(enabled = isSynced) {
+                                    playerConnection.player.seekTo(item.time)
+                                    lastPreviewTime = 0L
+                                }
+                                .padding(horizontal = 24.dp, vertical = 8.dp)
+                                .alpha(if (!isSynced || index == displayedCurrentLineIndex) 1f else 0.5f)
+                        )
+                    }
                 }
             }
         }
