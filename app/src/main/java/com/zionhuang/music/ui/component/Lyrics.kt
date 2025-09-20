@@ -1,41 +1,54 @@
 package com.zionhuang.music.ui.component
 
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.WindowInsetsSides
-import androidx.compose.foundation.layout.add
-import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -43,12 +56,17 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.awaitPointerEventScope
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -64,17 +82,24 @@ import com.zionhuang.music.lyrics.LyricsEntry
 import com.zionhuang.music.lyrics.LyricsEntry.Companion.HEAD_LYRICS_ENTRY
 import com.zionhuang.music.lyrics.LyricsUtils.findCurrentLineIndex
 import com.zionhuang.music.lyrics.LyricsUtils.parseLyrics
-import com.zionhuang.music.ui.component.shimmer.ShimmerHost
-import com.zionhuang.music.ui.component.shimmer.TextPlaceholder
+import com.zionhuang.music.songtext.SongText
+import com.zionhuang.music.songtext.SongTextParser
+import com.zionhuang.music.songtext.chordLine
+import com.zionhuang.music.songtext.text
 import com.zionhuang.music.ui.menu.LyricsMenu
 import com.zionhuang.music.ui.screens.settings.PlayerTextAlignment
-import com.zionhuang.music.ui.utils.fadingEdge
 import com.zionhuang.music.utils.rememberEnumPreference
 import com.zionhuang.music.utils.rememberPreference
+import kotlin.math.coerceIn
+import kotlin.math.roundToInt
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
-import kotlin.time.Duration.Companion.seconds
+import kotlinx.coroutines.withContext
 
+private enum class ViewMode { Lyrics, Chords }
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun Lyrics(
     sliderPositionProvider: () -> Long?,
@@ -84,6 +109,13 @@ fun Lyrics(
     val menuState = LocalMenuState.current
     val density = LocalDensity.current
 
+    val snackbarHostState = remember { SnackbarHostState() }
+    var showSpeedSheet by rememberSaveable { mutableStateOf(false) }
+    var autoScrollSpeed by rememberSaveable { mutableStateOf(0.4f) }
+    var autoScrollActive by rememberSaveable { mutableStateOf(false) }
+    var autoScrollPausedByPress by remember { mutableStateOf(false) }
+
+    val showChordsState = rememberPreference(ShowChordsKey, false)
     val playerTextAlignment by rememberEnumPreference(PlayerTextAlignmentKey, PlayerTextAlignment.CENTER)
     var translationEnabled by rememberPreference(TranslateLyricsKey, false)
 
@@ -91,37 +123,20 @@ fun Lyrics(
     val translating by playerConnection.translating.collectAsState()
     val lyricsEntity by playerConnection.currentLyrics.collectAsState(initial = null)
     val chordsEntity by playerConnection.currentChords.collectAsState(initial = null)
-    var showChords by rememberPreference(ShowChordsKey, false)
-    val chords = chordsEntity?.chords
+
     val lyrics = remember(lyricsEntity, translating) {
-        if (translating) null
-        else lyricsEntity?.lyrics
+        if (translating) null else lyricsEntity?.lyrics
     }
-
     val lines = remember(lyrics) {
-        if (lyrics == null || lyrics == LYRICS_NOT_FOUND) emptyList()
-        else if (lyrics.startsWith("[")) listOf(HEAD_LYRICS_ENTRY) + parseLyrics(lyrics)
-        else lyrics.lines().mapIndexed { index, line -> LyricsEntry(index * 100L, line) }
+        when {
+            lyrics == null || lyrics == LYRICS_NOT_FOUND -> emptyList()
+            lyrics.startsWith("[") -> listOf(HEAD_LYRICS_ENTRY) + parseLyrics(lyrics)
+            else -> lyrics.lines().mapIndexed { index, text -> LyricsEntry(index * 100L, text) }
+        }
     }
-    val isSynced = remember(lyrics) {
-        !lyrics.isNullOrEmpty() && lyrics.startsWith("[")
-    }
+    val isSynced = remember(lyrics) { !lyrics.isNullOrEmpty() && lyrics.startsWith("[") }
 
-    var currentLineIndex by remember {
-        mutableIntStateOf(-1)
-    }
-    // Because LaunchedEffect has delay, which leads to inconsistent with current line color and scroll animation,
-    // we use deferredCurrentLineIndex when user is scrolling
-    var deferredCurrentLineIndex by rememberSaveable {
-        mutableIntStateOf(0)
-    }
-
-    var lastPreviewTime by rememberSaveable {
-        mutableLongStateOf(0L)
-    }
-    var isSeeking by remember {
-        mutableStateOf(false)
-    }
+    var currentLineIndex by remember { mutableIntStateOf(-1) }
 
     LaunchedEffect(lyrics) {
         if (lyrics.isNullOrEmpty() || !lyrics.startsWith("[")) {
@@ -131,251 +146,627 @@ fun Lyrics(
         while (isActive) {
             delay(50)
             val sliderPosition = sliderPositionProvider()
-            isSeeking = sliderPosition != null
-            currentLineIndex = findCurrentLineIndex(lines, sliderPosition ?: playerConnection.player.currentPosition)
+            val position = sliderPosition ?: playerConnection.player.currentPosition
+            currentLineIndex = findCurrentLineIndex(lines, position)
         }
     }
 
-    LaunchedEffect(isSeeking, lastPreviewTime) {
-        if (isSeeking) {
-            lastPreviewTime = 0L
-        } else if (lastPreviewTime != 0L) {
-            delay(LyricsPreviewTime)
-            lastPreviewTime = 0L
+    val chords = chordsEntity?.chords
+    val songText by produceState<SongText?>(initialValue = null, chords, mediaMetadata) {
+        val metadata = mediaMetadata
+        val chordText = chords
+        value = if (metadata == null || chordText.isNullOrBlank() || chordText == CHORDS_NOT_FOUND) {
+            null
+        } else {
+            withContext(Dispatchers.Default) {
+                runCatching {
+                    SongTextParser.parse(
+                        id = metadata.id,
+                        title = metadata.title,
+                        artist = metadata.artists.joinToString(separator = ", ") { it.name }.takeIf { it.isNotBlank() },
+                        raw = chordText,
+                    )
+                }.getOrNull()
+            }
+        }
+    }
+    val hasChordContent = remember(songText) {
+        songText?.sections?.any { section -> section.lines.any { it.chordSpans.isNotEmpty() } } == true
+    }
+    val chordsNotFound = chords == CHORDS_NOT_FOUND
+    val chordsLoading = chordsEntity == null && !chordsNotFound
+    val lyricsAvailable = !lyrics.isNullOrBlank() && lyrics != LYRICS_NOT_FOUND
+
+    LaunchedEffect(chordsNotFound, songText) {
+        if (chordsNotFound || (songText != null && !hasChordContent)) {
+            showChordsState.value = false
+        }
+    }
+    LaunchedEffect(lyricsAvailable, hasChordContent) {
+        if (!lyricsAvailable && hasChordContent) {
+            showChordsState.value = true
         }
     }
 
+    val viewMode = if (showChordsState.value) ViewMode.Chords else ViewMode.Lyrics
     val lyricsListState = rememberLazyListState()
     val chordsListState = rememberLazyListState()
+    val canAutoScroll = when (viewMode) {
+        ViewMode.Lyrics -> lines.isNotEmpty()
+        ViewMode.Chords -> songText != null && hasChordContent
+    }
 
-    LaunchedEffect(currentLineIndex, lastPreviewTime, showChords) {
-        if (showChords || !isSynced) return@LaunchedEffect
-        if (currentLineIndex != -1) {
-            deferredCurrentLineIndex = currentLineIndex
-            if (lastPreviewTime == 0L) {
-                if (isSeeking) {
-                    lyricsListState.scrollToItem(currentLineIndex, with(density) { 36.dp.toPx().toInt() })
-                } else {
-                    lyricsListState.animateScrollToItem(currentLineIndex, with(density) { 36.dp.toPx().toInt() })
-                }
+    LaunchedEffect(canAutoScroll) {
+        if (!canAutoScroll) {
+            autoScrollActive = false
+        }
+    }
+
+    var userScrollInterrupt by remember { mutableStateOf(false) }
+    val pauseMessage = stringResource(R.string.auto_scroll_paused)
+    val resumeLabel = stringResource(R.string.auto_scroll_resume)
+
+    LaunchedEffect(userScrollInterrupt) {
+        if (userScrollInterrupt) {
+            autoScrollActive = false
+            val result = snackbarHostState.showSnackbar(
+                message = pauseMessage,
+                actionLabel = resumeLabel,
+            )
+            if (result == SnackbarResult.ActionPerformed) {
+                autoScrollActive = true
+            }
+            userScrollInterrupt = false
+        }
+    }
+    LaunchedEffect(viewMode, autoScrollActive, autoScrollSpeed, autoScrollPausedByPress) {
+        if (!autoScrollActive || autoScrollPausedByPress) return@LaunchedEffect
+        val targetState = when (viewMode) {
+            ViewMode.Lyrics -> lyricsListState
+            ViewMode.Chords -> chordsListState
+        }
+        val baseSpeedPx = with(density) { 100.dp.toPx() }
+        val pxPerSecond = baseSpeedPx * autoScrollSpeed.coerceIn(0f, 1f)
+        if (pxPerSecond <= 0f) return@LaunchedEffect
+        var previousFrame = withFrameNanos { it }
+        while (true) {
+            val frameTime = withFrameNanos { it }
+            val deltaSeconds = (frameTime - previousFrame) / 1_000_000_000f
+            previousFrame = frameTime
+            val distance = pxPerSecond * deltaSeconds
+            if (distance <= 0f) continue
+            val consumed = targetState.scrollBy(distance)
+            if (consumed < distance) {
+                autoScrollActive = false
+                break
             }
         }
     }
 
-
-BoxWithConstraints(
-    contentAlignment = Alignment.Center,
-    modifier = modifier
-        .fillMaxSize()
-        .padding(bottom = 12.dp)
-) {
-    val halfHeight = maxHeight / 2
-
-    Column(
-        modifier = Modifier.fillMaxSize()
-    ) {
-        TabRow(
-            selectedTabIndex = if (showChords) 1 else 0,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Tab(
-                selected = !showChords,
-                onClick = { showChords = false },
-                text = { Text(stringResource(R.string.lyrics_tab)) }
-            )
-            Tab(
-                selected = showChords,
-                onClick = { showChords = true },
-                text = { Text(stringResource(R.string.chords_tab)) }
-            )
+    DisposableEffect(autoScrollActive) {
+        if (!autoScrollActive) {
+            autoScrollPausedByPress = false
         }
+        onDispose { autoScrollPausedByPress = false }
+    }
 
-        Box(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
-        ) {
-            if (showChords) {
-                when {
-                    chordsEntity == null -> {
-                        Column(
-                            modifier = Modifier.fillMaxSize(),
-                            verticalArrangement = Arrangement.Center,
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            CircularProgressIndicator()
-                            Text(
-                                text = stringResource(R.string.chords_loading),
-                                color = MaterialTheme.colorScheme.secondary,
-                                modifier = Modifier.padding(top = 16.dp)
-                            )
-                        }
-                    }
-                    chords == CHORDS_NOT_FOUND -> {
-                        Text(
-                            text = stringResource(R.string.chords_not_found),
-                            fontSize = 20.sp,
-                            color = MaterialTheme.colorScheme.secondary,
-                            textAlign = TextAlign.Center,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 24.dp, vertical = 8.dp)
-                        )
-                    }
-                    else -> {
-                        val chordLines = remember(chords) { chords?.lines() ?: emptyList() }
-                        LazyColumn(
-                            state = chordsListState,
-                            contentPadding = WindowInsets.systemBars
-                                .only(WindowInsetsSides.Top)
-                                .add(WindowInsets(top = halfHeight, bottom = halfHeight))
-                                .asPaddingValues(),
-                            modifier = Modifier
-                                .fadingEdge(vertical = 64.dp)
-                        ) {
-                            itemsIndexed(chordLines) { _, line ->
-                                Text(
-                                    text = line,
-                                    fontSize = 18.sp,
-                                    fontFamily = FontFamily.Monospace,
-                                    color = MaterialTheme.colorScheme.onBackground,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 24.dp, vertical = 8.dp)
-                                )
-                            }
-                        }
-                    }
+    val pointerModifier = Modifier.pointerInput(autoScrollActive) {
+        if (!autoScrollActive) return@pointerInput
+        awaitPointerEventScope {
+            try {
+                while (true) {
+                    val event = awaitPointerEvent(PointerEventPass.Passive)
+                    autoScrollPausedByPress = event.changes.any { it.pressed }
                 }
-            } else {
-                LazyColumn(
-                    state = lyricsListState,
-                    contentPadding = WindowInsets.systemBars
-                        .only(WindowInsetsSides.Top)
-                        .add(WindowInsets(top = halfHeight, bottom = halfHeight))
-                        .asPaddingValues(),
-                    modifier = Modifier
-                        .fadingEdge(vertical = 64.dp)
-                        .nestedScroll(remember {
-                            object : NestedScrollConnection {
-                                override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
-                                    lastPreviewTime = System.currentTimeMillis()
-                                    return super.onPostScroll(consumed, available, source)
-                                }
-
-                                override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
-                                    lastPreviewTime = System.currentTimeMillis()
-                                    return super.onPostFling(consumed, available)
-                                }
-                            }
-                        })
-                ) {
-                    val displayedCurrentLineIndex = if (isSeeking) deferredCurrentLineIndex else currentLineIndex
-
-                    if (lyrics == null || translating) {
-                        item {
-                            ShimmerHost {
-                                repeat(10) {
-                                    Box(
-                                        contentAlignment = when (playerTextAlignment) {
-                                            PlayerTextAlignment.SIDED -> Alignment.CenterStart
-                                            PlayerTextAlignment.CENTER -> Alignment.Center
-                                        },
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(horizontal = 24.dp, vertical = 4.dp)
-                                    ) {
-                                        TextPlaceholder()
-                                    }
-                                }
-                            }
-                        }
-                    } else {
-                        itemsIndexed(
-                            items = lines
-                        ) { index, item ->
-                            Text(
-                                text = item.text,
-                                fontSize = 20.sp,
-                                color = if (index == displayedCurrentLineIndex) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary,
-                                textAlign = when (playerTextAlignment) {
-                                    PlayerTextAlignment.SIDED -> TextAlign.Start
-                                    PlayerTextAlignment.CENTER -> TextAlign.Center
-                                },
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable(enabled = isSynced) {
-                                        playerConnection.player.seekTo(item.time)
-                                        lastPreviewTime = 0L
-                                    }
-                                    .padding(horizontal = 24.dp, vertical = 8.dp)
-                                    .alpha(if (!isSynced || index == displayedCurrentLineIndex) 1f else 0.5f)
-                            )
-                        }
-                    }
-                }
-
-                if (lyrics == LYRICS_NOT_FOUND) {
-                    Text(
-                        text = stringResource(R.string.lyrics_not_found),
-                        fontSize = 20.sp,
-                        color = MaterialTheme.colorScheme.secondary,
-                        textAlign = when (playerTextAlignment) {
-                            PlayerTextAlignment.SIDED -> TextAlign.Start
-                            PlayerTextAlignment.CENTER -> TextAlign.Center
-                        },
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 24.dp, vertical = 8.dp)
-                            .alpha(0.5f)
-                    )
-                }
+            } finally {
+                autoScrollPausedByPress = false
             }
         }
     }
-        mediaMetadata?.let { mediaMetadata ->
-            Row(
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(end = 12.dp)
-            ) {
-                if (BuildConfig.FLAVOR != "foss" && !showChords) {
-                    IconButton(
-                        onClick = {
-                            translationEnabled = !translationEnabled
-                        }
-                    ) {
-                        Icon(
-                            painter = painterResource(id = R.drawable.translate),
-                            contentDescription = null,
-                            tint = LocalContentColor.current.copy(alpha = if (translationEnabled) 1f else 0.3f)
-                        )
-                    }
-                }
 
-                IconButton(
-                    onClick = {
+    val showTranslationToggle = BuildConfig.FLAVOR != "foss" && viewMode == ViewMode.Lyrics
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    Scaffold(
+        modifier = modifier.fillMaxSize(),
+        topBar = {
+            PlayerTopBar(
+                viewMode = viewMode,
+                chordsEnabled = !chordsLoading && !chordsNotFound && hasChordContent,
+                lyricsEnabled = lyricsAvailable || lines.isNotEmpty(),
+                translationEnabled = translationEnabled,
+                showTranslationToggle = showTranslationToggle,
+                onModeChange = { mode ->
+                    when (mode) {
+                        ViewMode.Lyrics -> showChordsState.value = false
+                        ViewMode.Chords -> if (!chordsNotFound && hasChordContent) showChordsState.value = true
+                    }
+                },
+                onTranslationToggle = { translationEnabled = !translationEnabled },
+                onMenuClick = {
+                    mediaMetadata?.let { metadata ->
                         menuState.show {
                             LyricsMenu(
                                 lyricsProvider = { lyricsEntity },
-                                mediaMetadataProvider = { mediaMetadata },
-                                onDismiss = menuState::dismiss
+                                mediaMetadataProvider = { metadata },
+                                onDismiss = menuState::dismiss,
                             )
                         }
                     }
-                ) {
+                },
+            )
+        },
+        floatingActionButton = {
+            if (canAutoScroll) {
+                FloatingActionButton(onClick = { showSpeedSheet = true }) {
                     Icon(
-                        painter = painterResource(id = R.drawable.more_horiz),
-                        contentDescription = null
+                        painter = painterResource(id = R.drawable.speed),
+                        contentDescription = stringResource(R.string.auto_scroll),
+                    )
+                }
+            }
+        },
+        snackbarHost = { SnackbarHost(snackbarHostState) },
+    ) { innerPadding ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .then(pointerModifier),
+        ) {
+            when (viewMode) {
+                ViewMode.Lyrics -> LyricsContent(
+                    lines = lines,
+                    listState = lyricsListState,
+                    currentLineIndex = currentLineIndex,
+                    lyrics = lyrics,
+                    translating = translating,
+                    isSynced = isSynced,
+                    playerTextAlignment = playerTextAlignment,
+                    showChordsHint = chordsNotFound || (songText != null && !hasChordContent),
+                    onLineClick = { entry ->
+                        playerConnection.player.seekTo(entry.time)
+                        autoScrollActive = false
+                    },
+                    onUserScroll = {
+                        if (autoScrollActive && !userScrollInterrupt) {
+                            userScrollInterrupt = true
+                        }
+                    },
+                    autoScrollActive = autoScrollActive,
+                )
+
+                ViewMode.Chords -> ChordsContent(
+                    songText = songText,
+                    listState = chordsListState,
+                    chordsLoading = chordsLoading,
+                    chordsNotFound = chordsNotFound,
+                    hasChordContent = hasChordContent,
+                    lyricsAvailable = lyricsAvailable,
+                    onUserScroll = {
+                        if (autoScrollActive && !userScrollInterrupt) {
+                            userScrollInterrupt = true
+                        }
+                    },
+                )
+            }
+        }
+
+        if (showSpeedSheet) {
+            ModalBottomSheet(
+                onDismissRequest = { showSpeedSheet = false },
+                sheetState = sheetState,
+            ) {
+                AutoScrollSpeedSheet(
+                    autoScrollSpeed = autoScrollSpeed,
+                    onSpeedChange = { autoScrollSpeed = it.coerceIn(0f, 1f) },
+                    autoScrollActive = autoScrollActive,
+                    onToggleAutoScroll = {
+                        autoScrollActive = !autoScrollActive
+                        if (!autoScrollActive) {
+                            autoScrollPausedByPress = false
+                        }
+                    },
+                )
+            }
+        }
+    }
+}
+@Composable
+private fun PlayerTopBar(
+    viewMode: ViewMode,
+    chordsEnabled: Boolean,
+    lyricsEnabled: Boolean,
+    translationEnabled: Boolean,
+    showTranslationToggle: Boolean,
+    onModeChange: (ViewMode) -> Unit,
+    onTranslationToggle: () -> Unit,
+    onMenuClick: () -> Unit,
+) {
+    CenterAlignedTopAppBar(
+        title = {
+            SingleChoiceSegmentedButtonRow {
+                SegmentedButton(
+                    selected = viewMode == ViewMode.Lyrics,
+                    onClick = { onModeChange(ViewMode.Lyrics) },
+                    enabled = lyricsEnabled,
+                    shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
+                ) {
+                    Text(text = stringResource(R.string.lyrics_tab))
+                }
+                SegmentedButton(
+                    selected = viewMode == ViewMode.Chords,
+                    onClick = { onModeChange(ViewMode.Chords) },
+                    enabled = chordsEnabled,
+                    shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
+                ) {
+                    Text(text = stringResource(R.string.chords_tab))
+                }
+            }
+        },
+        actions = {
+            if (showTranslationToggle) {
+                IconButton(onClick = onTranslationToggle) {
+                    Icon(
+                        painter = painterResource(id = R.drawable.translate),
+                        contentDescription = null,
+                        tint = LocalContentColor.current.copy(alpha = if (translationEnabled) 1f else 0.3f),
+                    )
+                }
+            }
+            IconButton(onClick = onMenuClick) {
+                Icon(
+                    painter = painterResource(id = R.drawable.more_horiz),
+                    contentDescription = null,
+                )
+            }
+        },
+    )
+}
+
+@Composable
+private fun LyricsContent(
+    lines: List<LyricsEntry>,
+    listState: LazyListState,
+    currentLineIndex: Int,
+    lyrics: String?,
+    translating: Boolean,
+    isSynced: Boolean,
+    playerTextAlignment: PlayerTextAlignment,
+    showChordsHint: Boolean,
+    onLineClick: (LyricsEntry) -> Unit,
+    onUserScroll: () -> Unit,
+    autoScrollActive: Boolean,
+) {
+    val textAlign = when (playerTextAlignment) {
+        PlayerTextAlignment.SIDED -> TextAlign.Start
+        PlayerTextAlignment.CENTER -> TextAlign.Center
+    }
+    val bodyStyle = minLineHeightStyle(MaterialTheme.typography.bodyLarge)
+
+    when {
+        translating || lyrics == null -> {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center,
+            ) {
+                CircularProgressIndicator()
+            }
+        }
+
+        lyrics == LYRICS_NOT_FOUND -> {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = stringResource(R.string.lyrics_not_found),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = textAlign,
+                    modifier = Modifier.padding(horizontal = 24.dp),
+                )
+            }
+        }
+
+        else -> {
+            LazyColumn(
+                state = listState,
+                contentPadding = PaddingValues(vertical = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .nestedScroll(remember(autoScrollActive) {
+                        object : NestedScrollConnection {
+                            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                                if (autoScrollActive && source == NestedScrollSource.User) {
+                                    onUserScroll()
+                                }
+                                return Offset.Zero
+                            }
+
+                            override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
+                                if (autoScrollActive && (consumed != Velocity.Zero || available != Velocity.Zero)) {
+                                    onUserScroll()
+                                }
+                                return Velocity.Zero
+                            }
+                        }
+                    }),
+            ) {
+                if (showChordsHint) {
+                    item {
+                        Text(
+                            text = stringResource(R.string.chords_unavailable_hint),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                        )
+                    }
+                }
+                itemsIndexed(lines) { index, entry ->
+                    Text(
+                        text = entry.text,
+                        style = bodyStyle,
+                        color = if (index == currentLineIndex) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                        textAlign = textAlign,
+                        fontWeight = if (index == currentLineIndex) FontWeight.Bold else FontWeight.Medium,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                            .clickable(enabled = isSynced) { onLineClick(entry) }
+                            .alpha(
+                                if (!isSynced || index == currentLineIndex) {
+                                    1f
+                                } else {
+                                    0.6f
+                                }
+                            ),
                     )
                 }
             }
         }
     }
 }
+@Composable
+private fun ChordsContent(
+    songText: SongText?,
+    listState: LazyListState,
+    chordsLoading: Boolean,
+    chordsNotFound: Boolean,
+    hasChordContent: Boolean,
+    lyricsAvailable: Boolean,
+    onUserScroll: () -> Unit,
+) {
+    when {
+        chordsLoading -> {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center,
+            ) {
+                CircularProgressIndicator()
+            }
+        }
 
-const val animateScrollDuration = 300L
-val LyricsPreviewTime = 4.seconds
+        chordsNotFound -> {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = stringResource(R.string.chords_not_found),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 24.dp),
+                    textAlign = TextAlign.Center,
+                )
+            }
+        }
+
+        songText == null || !hasChordContent -> {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = stringResource(R.string.chords_unavailable_hint),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 24.dp),
+                    textAlign = TextAlign.Center,
+                )
+            }
+        }
+
+        else -> {
+            val lyricStyle = minLineHeightStyle(MaterialTheme.typography.bodyLarge)
+            LazyColumn(
+                state = listState,
+                contentPadding = PaddingValues(vertical = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .nestedScroll(remember {
+                        object : NestedScrollConnection {
+                            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                                if (source == NestedScrollSource.User) {
+                                    onUserScroll()
+                                }
+                                return Offset.Zero
+                            }
+
+                            override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
+                                if (consumed != Velocity.Zero || available != Velocity.Zero) {
+                                    onUserScroll()
+                                }
+                                return Velocity.Zero
+                            }
+                        }
+                    }),
+            ) {
+                if (!lyricsAvailable) {
+                    item {
+                        Text(
+                            text = stringResource(R.string.lyrics_unavailable_hint),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                        )
+                    }
+                }
+                songText.sections.forEachIndexed { sectionIndex, section ->
+                    if (!section.tag.isNullOrBlank()) {
+                        item(key = "section-$sectionIndex") {
+                            Text(
+                                text = section.tag!!,
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                            )
+                        }
+                    }
+                    itemsIndexed(section.lines, key = { index, _ -> "$sectionIndex-$index" }) { _, line ->
+                        val chordText = remember(line.chordSpans) { line.chordLine() }
+                        val lyricText = remember(line.tokens) { line.text }
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 6.dp),
+                        ) {
+                            if (chordText.isNotEmpty()) {
+                                Text(
+                                    text = chordText,
+                                    style = MaterialTheme.typography.titleSmall.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        fontFamily = FontFamily.Monospace,
+                                    ),
+                                    color = MaterialTheme.colorScheme.tertiary,
+                                )
+                            }
+                            if (lyricText.isNotEmpty()) {
+                                Text(
+                                    text = lyricText,
+                                    style = lyricStyle,
+                                    color = MaterialTheme.colorScheme.onBackground,
+                                    modifier = Modifier.padding(top = if (chordText.isNotEmpty()) 6.dp else 0.dp),
+                                )
+                            } else if (chordText.isNotEmpty()) {
+                                Spacer(modifier = Modifier.height(8.dp))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AutoScrollSpeedSheet(
+    autoScrollSpeed: Float,
+    onSpeedChange: (Float) -> Unit,
+    autoScrollActive: Boolean,
+    onToggleAutoScroll: () -> Unit,
+) {
+    val percent = (autoScrollSpeed.coerceIn(0f, 1f) * 100f).roundToInt()
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp, vertical = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        Text(
+            text = stringResource(R.string.auto_scroll),
+            style = MaterialTheme.typography.titleLarge,
+        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(
+                text = stringResource(R.string.auto_scroll_speed),
+                style = MaterialTheme.typography.labelLarge,
+            )
+            Spacer(modifier = Modifier.weight(1f))
+            Text(
+                text = stringResource(R.string.auto_scroll_speed_value, percent),
+                style = MaterialTheme.typography.labelLarge,
+            )
+        }
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Slider(
+                value = autoScrollSpeed.coerceIn(0f, 1f),
+                onValueChange = { onSpeedChange(it.coerceIn(0f, 1f)) },
+                modifier = Modifier.weight(1f),
+            )
+            Spacer(modifier = Modifier.width(16.dp))
+            val iconRes = if (autoScrollActive) R.drawable.pause else R.drawable.play
+            val description = if (autoScrollActive) R.string.auto_scroll_pause else R.string.auto_scroll_play
+            FilledTonalIconButton(onClick = onToggleAutoScroll) {
+                Icon(
+                    painter = painterResource(id = iconRes),
+                    contentDescription = stringResource(description),
+                )
+            }
+        }
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            AutoScrollPresetChip(
+                label = stringResource(R.string.auto_scroll_preset_slow),
+                value = 0.2f,
+                onClick = onSpeedChange,
+            )
+            AutoScrollPresetChip(
+                label = stringResource(R.string.auto_scroll_preset_medium),
+                value = 0.4f,
+                onClick = onSpeedChange,
+            )
+            AutoScrollPresetChip(
+                label = stringResource(R.string.auto_scroll_preset_fast),
+                value = 0.7f,
+                onClick = onSpeedChange,
+            )
+        }
+        Text(
+            text = stringResource(R.string.auto_scroll_hint),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+    }
+}
+
+@Composable
+private fun AutoScrollPresetChip(
+    label: String,
+    value: Float,
+    onClick: (Float) -> Unit,
+) {
+    AssistChip(
+        onClick = { onClick(value.coerceIn(0f, 1f)) },
+        label = { Text(text = label) },
+    )
+}
+
+private fun minLineHeightStyle(style: TextStyle): TextStyle {
+    val fontSize = if (style.fontSize != TextUnit.Unspecified) style.fontSize else 16.sp
+    val desired = (fontSize.value * 1.3f).sp
+    val current = style.lineHeight
+    val lineHeight = if (current == TextUnit.Unspecified || current.value < desired.value) desired else current
+    return style.copy(lineHeight = lineHeight)
+}
