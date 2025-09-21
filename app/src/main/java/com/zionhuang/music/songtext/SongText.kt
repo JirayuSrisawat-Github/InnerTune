@@ -1,7 +1,6 @@
 package com.zionhuang.music.songtext
 
 import android.util.Log
-import kotlin.math.max
 
 private const val TAG = "SongTextParser"
 
@@ -250,21 +249,7 @@ object SongTextParser {
         anchors.sortedBy { it.charIndex }.forEach { anchor ->
             var column = anchor.charIndex.coerceAtLeast(0)
             if (spans.isNotEmpty()) {
-                val previousIndex = spans.lastIndex
-                var previous = spans[previousIndex]
-                if (column <= previous.startColumn) {
-                    val minPreviousStart = if (previousIndex == 0) {
-                        0
-                    } else {
-                        val before = spans[previousIndex - 1]
-                        before.startColumn + before.label.length + 1
-                    }
-                    val shiftedStart = max(minPreviousStart, column - 1)
-                    if (shiftedStart < previous.startColumn) {
-                        previous = previous.copy(startColumn = shiftedStart)
-                        spans[previousIndex] = previous
-                    }
-                }
+                val previous = spans.last()
                 val minimumStart = previous.startColumn + previous.label.length + 1
                 if (column < minimumStart) {
                     column = minimumStart
@@ -346,18 +331,3 @@ val LyricLine.text: String
         }
     }
 
-fun LyricLine.chordLine(): String {
-    if (chordSpans.isEmpty()) return ""
-    val endColumn = chordSpans.maxOf { it.startColumn + it.label.length }
-    if (endColumn == 0) return ""
-    val chars = MutableList(endColumn) { ' ' }
-    chordSpans.forEach { span ->
-        span.label.forEachIndexed { index, c ->
-            val position = span.startColumn + index
-            if (position in chars.indices) {
-                chars[position] = c
-            }
-        }
-    }
-    return chars.joinToString("").trimEnd()
-}
