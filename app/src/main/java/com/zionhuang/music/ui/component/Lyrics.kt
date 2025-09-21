@@ -17,10 +17,11 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.lazy.scrollBy
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.gestures.scroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -173,6 +174,11 @@ fun Lyrics(
     var isSeeking by remember { mutableStateOf(false) }
 
     val hasChords = songText?.sections?.any { section -> section.lines.isNotEmpty() } == true
+    val hasLyricsContent = lyricsEntries.isNotEmpty()
+    val canAutoScroll = when (viewMode) {
+        ViewMode.Lyrics -> hasLyricsContent
+        ViewMode.Chords -> hasChords
+    }
 
     LaunchedEffect(metadataId, lyricsAvailable, hasChords) {
         when {
@@ -181,11 +187,11 @@ fun Lyrics(
         }
     }
 
-    LaunchedEffect(viewMode, hasChords) {
-        if ((viewMode != ViewMode.Chords || !hasChords) && autoScrollActive) {
+    LaunchedEffect(viewMode, canAutoScroll) {
+        if (!canAutoScroll && autoScrollActive) {
             autoScrollActive = false
         }
-        if (viewMode != ViewMode.Chords && showSpeedSheet) {
+        if (!canAutoScroll && showSpeedSheet) {
             showSpeedSheet = false
         }
     }
@@ -241,8 +247,8 @@ fun Lyrics(
         }
     }
 
-    LaunchedEffect(viewMode, currentLineIndex, lastPreviewTime, isSyncedLyrics, lyricsEntries) {
-        if (viewMode != ViewMode.Lyrics || !isSyncedLyrics || lyricsEntries.isEmpty()) return@LaunchedEffect
+    LaunchedEffect(viewMode, currentLineIndex, lastPreviewTime, isSyncedLyrics, lyricsEntries, autoScrollActive) {
+        if (viewMode != ViewMode.Lyrics || !isSyncedLyrics || lyricsEntries.isEmpty() || autoScrollActive) return@LaunchedEffect
         if (currentLineIndex != -1) {
             deferredCurrentLineIndex = currentLineIndex
             if (lastPreviewTime == 0L) {
@@ -272,25 +278,24 @@ fun Lyrics(
         }
     }
 
-    LaunchedEffect(viewMode, autoScrollActive, autoScrollSpeed, hasChords, density) {
-        if (viewMode != ViewMode.Chords || !autoScrollActive) return@LaunchedEffect
-        if (!hasChords) {
-            autoScrollActive = false
-            return@LaunchedEffect
+    LaunchedEffect(viewMode, autoScrollActive, autoScrollSpeed, canAutoScroll, density) {
+        if (!autoScrollActive || !canAutoScroll) return@LaunchedEffect
+        val state = when (viewMode) {
+            ViewMode.Lyrics -> lyricsListState
+            ViewMode.Chords -> chordsListState
         }
-        val state = chordsListState
         val pixelsPerSecond = with(density) { 40.dp.toPx() } * autoScrollSpeed.coerceIn(0f, 1f)
         if (pixelsPerSecond <= 0f) {
             autoScrollActive = false
             return@LaunchedEffect
         }
         var lastFrameTime = withFrameNanos { it }
-        while (isActive && autoScrollActive) {
+        while (isActive && autoScrollActive && canAutoScroll) {
             val frameTime = withFrameNanos { it }
             val deltaSeconds = (frameTime - lastFrameTime) / 1_000_000_000f
             lastFrameTime = frameTime
             if (deltaSeconds <= 0f) continue
-            val consumed = state.scrollBy(pixelsPerSecond * deltaSeconds)
+            val consumed = state.scrollByPixels(pixelsPerSecond * deltaSeconds)
             if (consumed == 0f && !state.canScrollForward) {
                 autoScrollActive = false
                 break
@@ -299,8 +304,11 @@ fun Lyrics(
     }
 
     LaunchedEffect(viewMode, autoScrollActive) {
-        if (viewMode != ViewMode.Chords || !autoScrollActive) return@LaunchedEffect
-        val state = chordsListState
+        if (!autoScrollActive) return@LaunchedEffect
+        val state = when (viewMode) {
+            ViewMode.Lyrics -> lyricsListState
+            ViewMode.Chords -> chordsListState
+        }
         snapshotFlow { state.isScrollInProgress }
             .distinctUntilChanged()
             .collect { isScrolling ->
@@ -318,27 +326,25 @@ fun Lyrics(
             }
     }
 
-    val holdToPauseModifier = Modifier.pointerInput(viewMode, autoScrollActive) {
-        detectTapGestures(
-            onPress = {
-                if (!autoScrollActive) {
-                    tryAwaitRelease()
-                    return@detectTapGestures
+    val holdToPauseModifier = if (autoScrollActive) {
+        Modifier.pointerInput(viewMode, autoScrollActive) {
+            detectTapGestures(
+                onPress = {
+                    val wasActive = autoScrollActive
+                    autoScrollActive = false
+                    val released = tryAwaitRelease()
+                    if (released && wasActive && !autoScrollActive) {
+                        autoScrollActive = true
+                    }
                 }
-                val wasActive = autoScrollActive
-                autoScrollActive = false
-                val released = tryAwaitRelease()
-                if (released && wasActive && !autoScrollActive) {
-                    autoScrollActive = true
-                }
-            }
-        )
+            )
+        }
+    } else {
+        Modifier
     }
 
-    val canAutoScroll = viewMode == ViewMode.Chords && hasChords
-
     val speedSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    if (showSpeedSheet && viewMode == ViewMode.Chords) {
+    if (showSpeedSheet && canAutoScroll) {
         ModalBottomSheet(
             sheetState = speedSheetState,
             onDismissRequest = { showSpeedSheet = false }
@@ -385,7 +391,7 @@ fun Lyrics(
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
         floatingActionButton = {
-            if (viewMode == ViewMode.Chords && hasChords) {
+            if (canAutoScroll) {
                 FloatingActionButton(
                     onClick = { showSpeedSheet = true },
                     modifier = Modifier
@@ -491,11 +497,12 @@ fun Lyrics(
                         else -> {
                             LazyColumn(
                                 state = lyricsListState,
-                                contentPadding = PaddingValues(horizontal = 24.dp, vertical = 24.dp),
+                                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 24.dp),
                                 verticalArrangement = Arrangement.spacedBy(12.dp),
                                 modifier = Modifier
                                     .fillMaxSize()
                                     .nestedScroll(lyricsScrollConnection)
+                                    .then(holdToPauseModifier)
                             ) {
                                 itemsIndexed(lyricsEntries) { index, entry ->
                                     val isHighlighted = isSyncedLyrics && index == displayedLineIndex
@@ -613,6 +620,15 @@ private fun AutoScrollBottomSheet(
             }
         }
     }
+}
+
+private suspend fun LazyListState.scrollByPixels(delta: Float): Float {
+    if (delta == 0f) return 0f
+    var consumed = 0f
+    scroll {
+        consumed = scrollBy(delta)
+    }
+    return consumed
 }
 
 private val LyricsPreviewTime = 4.seconds

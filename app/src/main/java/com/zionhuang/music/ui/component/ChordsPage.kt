@@ -23,8 +23,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.hasBoundedHeight
-import androidx.compose.ui.unit.hasBoundedWidth
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.isUnspecified
 import androidx.compose.ui.unit.times
 import com.zionhuang.music.R
@@ -153,19 +152,12 @@ private fun ChordRow(spans: List<ChordSpan>, modifier: Modifier = Modifier) {
             requiredHeight = max(requiredHeight, placeable.height)
         }
         val minWidth = constraints.minWidth
-        val maxWidth = if (constraints.hasBoundedWidth) constraints.maxWidth else requiredWidth
-        val layoutWidth = when {
-            requiredWidth < minWidth -> minWidth
-            requiredWidth > maxWidth -> maxWidth
-            else -> requiredWidth
-        }
+        val maxWidth = if (constraints.maxWidth != Constraints.Infinity) constraints.maxWidth else requiredWidth
+        val layoutWidth = requiredWidth.coerceIn(minWidth, maxWidth)
+
         val minHeight = constraints.minHeight
-        val maxHeight = if (constraints.hasBoundedHeight) constraints.maxHeight else requiredHeight
-        val layoutHeight = when {
-            requiredHeight < minHeight -> minHeight
-            requiredHeight > maxHeight -> maxHeight
-            else -> requiredHeight
-        }
+        val maxHeight = if (constraints.maxHeight != Constraints.Infinity) constraints.maxHeight else requiredHeight
+        val layoutHeight = requiredHeight.coerceIn(minHeight, maxHeight)
         layout(layoutWidth, layoutHeight) {
             placeables.forEachIndexed { index, placeable ->
                 val span = spans[index]
