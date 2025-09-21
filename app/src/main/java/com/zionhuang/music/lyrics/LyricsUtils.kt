@@ -1,7 +1,8 @@
 package com.zionhuang.music.lyrics
 
 import android.text.format.DateUtils
-import com.zionhuang.music.ui.component.animateScrollDuration
+
+const val animateScrollDuration = 300L
 
 @Suppress("RegExpRedundantEscape")
 object LyricsUtils {

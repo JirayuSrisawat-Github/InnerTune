@@ -1,5 +1,6 @@
 package com.zionhuang.music.ui.component
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.horizontalScroll
@@ -15,14 +16,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Pause
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.Icon
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
-import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -36,8 +34,8 @@ import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.Slider
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -45,10 +43,10 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
@@ -68,16 +66,14 @@ import com.zionhuang.music.ui.menu.LyricsMenu
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withFrameNanos
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
 private enum class ViewMode { Lyrics, Chords }
 
 @Suppress("UNUSED_PARAMETER")
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun Lyrics(
     sliderPositionProvider: () -> Long?,
@@ -87,7 +83,6 @@ fun Lyrics(
     val menuState = LocalMenuState.current
 
     val snackbarHostState = remember { SnackbarHostState() }
-    val coroutineScope = rememberCoroutineScope()
     val context = LocalContext.current
     val view = LocalView.current
 
@@ -255,10 +250,7 @@ fun Lyrics(
                 },
                 enabled = canAutoScroll,
                 onDismiss = {
-                    coroutineScope.launch {
-                        speedSheetState.hide()
-                        showSpeedSheet = false
-                    }
+                    showSpeedSheet = false
                 }
             )
         }
@@ -313,7 +305,7 @@ fun Lyrics(
                     enabled = hasLyrics,
                     shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2)
                 ) {
-                    Text(text = stringResource(R.string.lyrics))
+                    Text(text = stringResource(R.string.lyrics_tab))
                 }
                 SegmentedButton(
                     selected = viewMode == ViewMode.Chords,
@@ -321,7 +313,7 @@ fun Lyrics(
                     enabled = hasChords,
                     shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2)
                 ) {
-                    Text(text = stringResource(R.string.chords))
+                    Text(text = stringResource(R.string.chords_tab))
                 }
             }
 
@@ -412,8 +404,8 @@ private fun AutoScrollBottomSheet(
                 enabled = enabled,
                 modifier = Modifier.weight(1f)
             ) {
-                val icon = if (isActive) Icons.Filled.Pause else Icons.Filled.PlayArrow
-                Icon(imageVector = icon, contentDescription = null)
+                val iconRes = if (isActive) R.drawable.pause else R.drawable.play
+                Icon(painterResource(iconRes), contentDescription = null)
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(text = stringResource(if (isActive) R.string.auto_scroll_pause else R.string.auto_scroll_play))
             }
