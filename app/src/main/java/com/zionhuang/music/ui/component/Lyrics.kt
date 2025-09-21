@@ -68,15 +68,20 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.times
 import com.zionhuang.music.BuildConfig
 import com.zionhuang.music.LocalPlayerConnection
 import com.zionhuang.music.R
@@ -89,9 +94,9 @@ import com.zionhuang.music.lyrics.LyricsEntry
 import com.zionhuang.music.lyrics.LyricsEntry.Companion.HEAD_LYRICS_ENTRY
 import com.zionhuang.music.lyrics.LyricsUtils.findCurrentLineIndex
 import com.zionhuang.music.lyrics.LyricsUtils.parseLyrics
+import com.zionhuang.music.songtext.ChordSpan
 import com.zionhuang.music.songtext.SongText
 import com.zionhuang.music.songtext.SongTextParser
-import com.zionhuang.music.songtext.chordLine
 import com.zionhuang.music.songtext.text
 import com.zionhuang.music.ui.menu.LyricsMenu
 import com.zionhuang.music.ui.screens.settings.PlayerTextAlignment
@@ -686,6 +691,14 @@ private fun ChordsContent(
 
         else -> {
             val lyricStyle = minLineHeightStyle(MaterialTheme.typography.bodyLarge)
+            val chordStyle = MaterialTheme.typography.titleSmall.copy(
+                fontWeight = FontWeight.Bold,
+                fontFamily = FontFamily.Monospace,
+            )
+            val chordColor = MaterialTheme.colorScheme.tertiary
+            val lyricColor = MaterialTheme.colorScheme.onSurface
+            val textMeasurer = rememberTextMeasurer()
+
             LazyColumn(
                 state = listState,
                 contentPadding = PaddingValues(vertical = 24.dp),
@@ -718,7 +731,7 @@ private fun ChordsContent(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 24.dp, vertical = 8.dp),
+                                .padding(horizontal = 16.dp, vertical = 8.dp),
                         )
                     }
                 }
@@ -731,42 +744,81 @@ private fun ChordsContent(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(horizontal = 24.dp, vertical = 4.dp),
+                                    .padding(horizontal = 16.dp, vertical = 4.dp),
                             )
                         }
                     }
                     itemsIndexed(section.lines, key = { index, _ -> "$sectionIndex-$index" }) { _, line ->
-                        val chordText = remember(line.chordSpans) { line.chordLine() }
                         val lyricText = remember(line.tokens) { line.text }
+                        val hasChords = line.chordSpans.isNotEmpty()
+                        if (!hasChords && lyricText.isBlank()) {
+                            return@itemsIndexed
+                        }
                         Column(
+                            verticalArrangement = Arrangement.spacedBy(6.dp),
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 24.dp, vertical = 6.dp),
+                                .padding(horizontal = 16.dp, vertical = 8.dp),
                         ) {
-                            if (chordText.isNotEmpty()) {
-                                Text(
-                                    text = chordText,
-                                    style = MaterialTheme.typography.titleSmall.copy(
-                                        fontWeight = FontWeight.Bold,
-                                        fontFamily = FontFamily.Monospace,
-                                    ),
-                                    color = MaterialTheme.colorScheme.primary,
+                            if (hasChords) {
+                                ChordRow(
+                                    spans = line.chordSpans,
+                                    style = chordStyle,
+                                    color = chordColor,
+                                    textMeasurer = textMeasurer,
                                 )
                             }
                             if (lyricText.isNotEmpty()) {
                                 Text(
                                     text = lyricText,
                                     style = lyricStyle,
-                                    color = MaterialTheme.colorScheme.secondary,
-                                    modifier = Modifier.padding(top = if (chordText.isNotEmpty()) 6.dp else 0.dp),
+                                    color = lyricColor,
                                 )
-                            } else if (chordText.isNotEmpty()) {
-                                Spacer(modifier = Modifier.height(8.dp))
                             }
                         }
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun ChordRow(
+    spans: List<ChordSpan>,
+    style: TextStyle,
+    color: Color,
+    textMeasurer: TextMeasurer,
+) {
+    if (spans.isEmpty()) return
+    val density = LocalDensity.current
+    val charWidth = remember(style, density.density, density.fontScale) {
+        val layout = textMeasurer.measure(
+            text = "M",
+            style = style,
+        )
+        val widthPx = layout.size.width.toFloat().coerceAtLeast(1f)
+        with(Density(density.density, density.fontScale)) { widthPx.toDp() }
+    }
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        var cursor = 0
+        spans.forEach { span ->
+            val gap = (span.startColumn - cursor).coerceAtLeast(0)
+            if (gap > 0) {
+                Spacer(modifier = Modifier.width(charWidth * gap))
+            }
+            Text(
+                text = span.label,
+                style = style,
+                color = color,
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Visible,
+            )
+            cursor = span.startColumn + span.label.length
         }
     }
 }
