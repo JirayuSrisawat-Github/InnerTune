@@ -17,6 +17,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.isUnspecified
+import androidx.compose.ui.unit.times
 import com.zionhuang.music.R
 
 @Composable
@@ -27,10 +29,18 @@ fun LyricsPage(
     contentPadding: PaddingValues,
     modifier: Modifier = Modifier,
 ) {
+    val baseStyle = MaterialTheme.typography.bodyLarge
+    val resolvedLineHeight = if (baseStyle.lineHeight.isUnspecified) {
+        baseStyle.fontSize * 1.3f
+    } else {
+        baseStyle.lineHeight
+    }
+    val textStyle = baseStyle.copy(lineHeight = resolvedLineHeight)
+
     if (lines.isEmpty()) {
         Box(
             contentAlignment = Alignment.Center,
-            modifier = modifier.fillMaxSize()
+            modifier = modifier
         ) {
             Text(
                 text = hint ?: stringResource(R.string.lyrics_not_found),
@@ -46,13 +56,13 @@ fun LyricsPage(
         state = listState,
         contentPadding = contentPadding,
         verticalArrangement = Arrangement.spacedBy(12.dp),
-        modifier = modifier.fillMaxSize()
+        modifier = modifier
     ) {
         items(lines) { line ->
             Text(
                 text = line,
-                style = MaterialTheme.typography.bodyLarge,
-                textAlign = TextAlign.Center
+                style = textStyle,
+                textAlign = TextAlign.Start
             )
         }
         if (hint != null) {

@@ -20,6 +20,8 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.isUnspecified
+import androidx.compose.ui.unit.times
 import com.zionhuang.music.R
 import com.zionhuang.music.songtext.LyricLine
 import com.zionhuang.music.songtext.SongText
@@ -38,7 +40,7 @@ fun ChordsPage(
     if (sections.isEmpty()) {
         Box(
             contentAlignment = Alignment.Center,
-            modifier = modifier.fillMaxSize()
+            modifier = modifier
         ) {
             Text(
                 text = hint ?: stringResource(R.string.chords_not_found),
@@ -54,14 +56,14 @@ fun ChordsPage(
         state = listState,
         contentPadding = contentPadding,
         verticalArrangement = Arrangement.spacedBy(16.dp),
-        modifier = modifier.fillMaxSize()
+        modifier = modifier
     ) {
         sections.forEach { section ->
             if (!section.tag.isNullOrBlank()) {
                 item(key = "${section.tag}-header") {
                     Text(
                         text = section.tag,
-                        style = MaterialTheme.typography.labelMedium,
+                        style = MaterialTheme.typography.labelLarge,
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(bottom = 4.dp)
@@ -89,12 +91,20 @@ fun ChordsPage(
 
 @Composable
 private fun ChordLyricLine(line: LyricLine) {
+    val lyricBaseStyle = MaterialTheme.typography.bodyLarge
+    val lyricLineHeight = if (lyricBaseStyle.lineHeight.isUnspecified) {
+        lyricBaseStyle.fontSize * 1.3f
+    } else {
+        lyricBaseStyle.lineHeight
+    }
+    val lyricStyle = lyricBaseStyle.copy(lineHeight = lyricLineHeight)
+
     Column(verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.fillMaxWidth()) {
         val chordLine = line.chordLine()
         if (chordLine.isNotBlank()) {
             Text(
                 text = chordLine,
-                style = MaterialTheme.typography.titleSmall,
+                style = MaterialTheme.typography.labelLarge,
                 fontFamily = FontFamily.Monospace,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.tertiary,
@@ -105,8 +115,9 @@ private fun ChordLyricLine(line: LyricLine) {
         if (lyric.isNotEmpty()) {
             Text(
                 text = lyric,
-                style = MaterialTheme.typography.bodyLarge,
-                textAlign = TextAlign.Start
+                style = lyricStyle,
+                textAlign = TextAlign.Start,
+                modifier = Modifier.padding(top = if (chordLine.isNotBlank()) 4.dp else 0.dp)
             )
         }
     }

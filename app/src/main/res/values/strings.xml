@@ -218,6 +218,8 @@
     <string name="auto_scroll_preset_fast">Fast</string>
     <string name="auto_scroll_play">Start auto scroll</string>
     <string name="auto_scroll_pause">Pause auto scroll</string>
+    <string name="lyrics_view_selected">Lyrics view selected</string>
+    <string name="chords_view_selected">Chords view selected</string>
     <string name="sleep_timer">Sleep timer</string>
     <string name="end_of_song">End of song</string>
     <plurals name="minute">
