@@ -1,29 +1,34 @@
 package com.zionhuang.music.ui.component
 
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
@@ -41,6 +46,8 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -49,26 +56,43 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.zionhuang.music.LocalPlayerConnection
 import com.zionhuang.music.R
 import com.zionhuang.music.db.entities.ChordsEntity.Companion.CHORDS_NOT_FOUND
 import com.zionhuang.music.db.entities.LyricsEntity.Companion.LYRICS_NOT_FOUND
+import com.zionhuang.music.constants.PlayerTextAlignmentKey
+import com.zionhuang.music.lyrics.LyricsEntry
+import com.zionhuang.music.lyrics.LyricsUtils.findCurrentLineIndex
+import com.zionhuang.music.lyrics.LyricsUtils.parseLyrics
 import com.zionhuang.music.songtext.SongText
 import com.zionhuang.music.songtext.SongTextParser
 import com.zionhuang.music.ui.menu.LyricsMenu
+import com.zionhuang.music.ui.screens.settings.PlayerTextAlignment
+import com.zionhuang.music.utils.rememberEnumPreference
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.withContext
 import kotlin.math.abs
 import kotlin.math.roundToInt
+import kotlin.time.Duration.Companion.seconds
 
 private enum class ViewMode { Lyrics, Chords }
 
@@ -89,11 +113,22 @@ fun Lyrics(
     val mediaMetadata by playerConnection.mediaMetadata.collectAsState()
     val lyricsEntity by playerConnection.currentLyrics.collectAsState(initial = null)
     val chordsEntity by playerConnection.currentChords.collectAsState(initial = null)
+    val playerTextAlignment by rememberEnumPreference(PlayerTextAlignmentKey, PlayerTextAlignment.CENTER)
 
-    val lyricsText = lyricsEntity?.lyrics?.takeIf { !it.isNullOrBlank() && it != LYRICS_NOT_FOUND }
-    val lyricLines = remember(lyricsText) {
-        lyricsText?.lines()?.filter { it.isNotEmpty() } ?: emptyList()
+    val lyricsRaw = lyricsEntity?.lyrics
+    val lyricsEntries = remember(lyricsRaw) {
+        when {
+            lyricsRaw.isNullOrEmpty() || lyricsRaw == LYRICS_NOT_FOUND -> emptyList()
+            lyricsRaw.startsWith("[") -> parseLyrics(lyricsRaw)
+            else -> lyricsRaw.lines().mapIndexedNotNull { index, line ->
+                if (line.isBlank()) null else LyricsEntry(index * 100L, line)
+            }
+        }
     }
+    val isSyncedLyrics = remember(lyricsRaw) {
+        !lyricsRaw.isNullOrEmpty() && lyricsRaw.startsWith("[")
+    }
+    val lyricsAvailable = lyricsRaw == LYRICS_NOT_FOUND || (!lyricsRaw.isNullOrEmpty() && lyricsEntries.isNotEmpty())
 
     val rawChords = chordsEntity?.chords
     var songText by remember { mutableStateOf<SongText?>(null) }
@@ -126,23 +161,93 @@ fun Lyrics(
     val lyricsListState = rememberLazyListState()
     val chordsListState = rememberLazyListState()
 
-    val hasLyrics = lyricLines.isNotEmpty()
+    var currentLineIndex by rememberSaveable(metadataId) { mutableIntStateOf(-1) }
+    var deferredCurrentLineIndex by rememberSaveable(metadataId) { mutableIntStateOf(0) }
+    var lastPreviewTime by rememberSaveable(metadataId) { mutableLongStateOf(0L) }
+    var isSeeking by remember { mutableStateOf(false) }
+
     val hasChords = songText?.sections?.any { section -> section.lines.isNotEmpty() } == true
 
-    LaunchedEffect(metadataId, hasLyrics, hasChords) {
+    LaunchedEffect(metadataId, lyricsAvailable, hasChords) {
         when {
-            !hasLyrics && hasChords -> viewMode = ViewMode.Chords
-            hasLyrics && !hasChords -> viewMode = ViewMode.Lyrics
+            !lyricsAvailable && hasChords -> viewMode = ViewMode.Chords
+            lyricsAvailable && !hasChords -> viewMode = ViewMode.Lyrics
         }
     }
 
-    LaunchedEffect(viewMode, hasLyrics, hasChords) {
-        val canAutoScroll = when (viewMode) {
-            ViewMode.Lyrics -> hasLyrics
-            ViewMode.Chords -> hasChords
-        }
-        if (!canAutoScroll && autoScrollActive) {
+    LaunchedEffect(viewMode, hasChords) {
+        if ((viewMode != ViewMode.Chords || !hasChords) && autoScrollActive) {
             autoScrollActive = false
+        }
+        if (viewMode != ViewMode.Chords && showSpeedSheet) {
+            showSpeedSheet = false
+        }
+    }
+
+    val density = LocalDensity.current
+
+    val lyricsScrollConnection = remember {
+        object : NestedScrollConnection {
+            override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
+                if (consumed.y != 0f) {
+                    lastPreviewTime = System.currentTimeMillis()
+                }
+                return Offset.Zero
+            }
+
+            override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
+                lastPreviewTime = System.currentTimeMillis()
+                return Velocity.Zero
+            }
+        }
+    }
+
+    LaunchedEffect(lyricsEntries, lyricsRaw, metadataId) {
+        if (!isSyncedLyrics || lyricsEntries.isEmpty()) {
+            isSeeking = false
+            currentLineIndex = -1
+            deferredCurrentLineIndex = 0
+            return@LaunchedEffect
+        }
+        while (isActive) {
+            delay(50)
+            val sliderPosition = sliderPositionProvider()
+            isSeeking = sliderPosition != null
+            val position = sliderPosition ?: playerConnection.player.currentPosition
+            currentLineIndex = findCurrentLineIndex(lyricsEntries, position)
+        }
+    }
+
+    LaunchedEffect(isSyncedLyrics, lyricsEntries) {
+        if (!isSyncedLyrics || lyricsEntries.isEmpty()) {
+            isSeeking = false
+            currentLineIndex = -1
+            deferredCurrentLineIndex = 0
+        }
+    }
+
+    LaunchedEffect(isSeeking, lastPreviewTime) {
+        if (isSeeking) {
+            lastPreviewTime = 0L
+        } else if (lastPreviewTime != 0L) {
+            delay(LyricsPreviewTime)
+            lastPreviewTime = 0L
+        }
+    }
+
+    LaunchedEffect(viewMode, currentLineIndex, lastPreviewTime, isSyncedLyrics, lyricsEntries) {
+        if (viewMode != ViewMode.Lyrics || !isSyncedLyrics || lyricsEntries.isEmpty()) return@LaunchedEffect
+        if (currentLineIndex != -1) {
+            deferredCurrentLineIndex = currentLineIndex
+            if (lastPreviewTime == 0L) {
+                val targetIndex = currentLineIndex.coerceIn(0, lyricsEntries.lastIndex)
+                val offset = with(density) { 36.dp.toPx().toInt() }
+                if (isSeeking) {
+                    lyricsListState.scrollToItem(targetIndex, offset)
+                } else {
+                    lyricsListState.animateScrollToItem(targetIndex, offset)
+                }
+            }
         }
     }
 
@@ -161,18 +266,13 @@ fun Lyrics(
         }
     }
 
-    val density = LocalDensity.current
-    LaunchedEffect(viewMode, autoScrollActive, autoScrollSpeed, hasLyrics, hasChords, density) {
-        if (!autoScrollActive) return@LaunchedEffect
-        val state = if (viewMode == ViewMode.Lyrics) lyricsListState else chordsListState
-        val canScroll = when (viewMode) {
-            ViewMode.Lyrics -> hasLyrics
-            ViewMode.Chords -> hasChords
-        }
-        if (!canScroll) {
+    LaunchedEffect(viewMode, autoScrollActive, autoScrollSpeed, hasChords, density) {
+        if (viewMode != ViewMode.Chords || !autoScrollActive) return@LaunchedEffect
+        if (!hasChords) {
             autoScrollActive = false
             return@LaunchedEffect
         }
+        val state = chordsListState
         val pixelsPerSecond = with(density) { 40.dp.toPx() } * autoScrollSpeed.coerceIn(0f, 1f)
         if (pixelsPerSecond <= 0f) {
             autoScrollActive = false
@@ -193,7 +293,8 @@ fun Lyrics(
     }
 
     LaunchedEffect(viewMode, autoScrollActive) {
-        val state = if (viewMode == ViewMode.Lyrics) lyricsListState else chordsListState
+        if (viewMode != ViewMode.Chords || !autoScrollActive) return@LaunchedEffect
+        val state = chordsListState
         snapshotFlow { state.isScrollInProgress }
             .distinctUntilChanged()
             .collect { isScrolling ->
@@ -228,13 +329,10 @@ fun Lyrics(
         )
     }
 
-    val canAutoScroll = when (viewMode) {
-        ViewMode.Lyrics -> hasLyrics
-        ViewMode.Chords -> hasChords
-    }
+    val canAutoScroll = viewMode == ViewMode.Chords && hasChords
 
     val speedSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    if (showSpeedSheet) {
+    if (showSpeedSheet && viewMode == ViewMode.Chords) {
         ModalBottomSheet(
             sheetState = speedSheetState,
             onDismissRequest = { showSpeedSheet = false }
@@ -280,11 +378,14 @@ fun Lyrics(
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
         floatingActionButton = {
-            if (hasLyrics || hasChords) {
+            if (viewMode == ViewMode.Chords && hasChords) {
                 ExtendedFloatingActionButton(
                     onClick = { showSpeedSheet = true },
                     icon = { Icon(painterResource(R.drawable.speed), contentDescription = null) },
-                    text = { Text(text = stringResource(R.string.auto_scroll)) }
+                    text = { Text(text = stringResource(R.string.auto_scroll)) },
+                    modifier = Modifier
+                        .navigationBarsPadding()
+                        .padding(bottom = 16.dp)
                 )
             }
         }
@@ -302,7 +403,7 @@ fun Lyrics(
                 SegmentedButton(
                     selected = viewMode == ViewMode.Lyrics,
                     onClick = { viewMode = ViewMode.Lyrics },
-                    enabled = hasLyrics,
+                    enabled = lyricsAvailable || lyricsEntity == null,
                     shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2)
                 ) {
                     Text(text = stringResource(R.string.lyrics_tab))
@@ -317,11 +418,8 @@ fun Lyrics(
                 }
             }
 
-            val listModifier = Modifier
-                .fillMaxSize()
-                .then(holdToPauseModifier)
-
-            val contentPadding = PaddingValues(
+            val displayedLineIndex = if (isSeeking) deferredCurrentLineIndex else currentLineIndex
+            val chordsContentPadding = PaddingValues(
                 start = 16.dp,
                 end = 16.dp,
                 top = 16.dp,
@@ -330,21 +428,111 @@ fun Lyrics(
 
             when (viewMode) {
                 ViewMode.Lyrics -> {
-                    LyricsPage(
-                        lines = lyricLines,
-                        hint = if (!hasChords) stringResource(R.string.chords_not_found) else null,
-                        listState = lyricsListState,
-                        contentPadding = contentPadding,
-                        modifier = listModifier
-                    )
+                    val hint = if (!hasChords) stringResource(R.string.chords_not_found) else null
+                    when {
+                        lyricsEntity == null && lyricsRaw != LYRICS_NOT_FOUND -> {
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier.fillMaxSize()
+                            ) {
+                                CircularProgressIndicator()
+                            }
+                        }
+                        lyricsRaw == LYRICS_NOT_FOUND -> {
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier.fillMaxSize()
+                            ) {
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                                    modifier = Modifier.padding(24.dp)
+                                ) {
+                                    Text(
+                                        text = stringResource(R.string.lyrics_not_found),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        textAlign = TextAlign.Center
+                                    )
+                                    if (hint != null) {
+                                        Text(
+                                            text = hint,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            textAlign = TextAlign.Center,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                        lyricsEntries.isEmpty() -> {
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier.fillMaxSize()
+                            ) {
+                                Text(
+                                    text = lyricsRaw.orEmpty().ifEmpty { stringResource(R.string.lyrics_not_found) },
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier.padding(24.dp)
+                                )
+                            }
+                        }
+                        else -> {
+                            LazyColumn(
+                                state = lyricsListState,
+                                contentPadding = PaddingValues(horizontal = 24.dp, vertical = 24.dp),
+                                verticalArrangement = Arrangement.spacedBy(12.dp),
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .nestedScroll(lyricsScrollConnection)
+                            ) {
+                                itemsIndexed(lyricsEntries) { index, entry ->
+                                    val isHighlighted = isSyncedLyrics && index == displayedLineIndex
+                                    Text(
+                                        text = entry.text,
+                                        color = if (isHighlighted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        fontSize = 20.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        textAlign = when (playerTextAlignment) {
+                                            PlayerTextAlignment.SIDED -> TextAlign.Start
+                                            PlayerTextAlignment.CENTER -> TextAlign.Center
+                                        },
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 8.dp)
+                                            .alpha(if (!isSyncedLyrics || isHighlighted) 1f else 0.5f)
+                                            .clickable(enabled = isSyncedLyrics) {
+                                                playerConnection.player.seekTo(entry.time)
+                                                lastPreviewTime = 0L
+                                            }
+                                    )
+                                }
+                                if (hint != null) {
+                                    item {
+                                        Text(
+                                            text = hint,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            textAlign = TextAlign.Center,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(top = 24.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
                 ViewMode.Chords -> {
                     ChordsPage(
                         songText = songText,
-                        hint = if (!hasLyrics) stringResource(R.string.lyrics_not_found) else null,
+                        hint = if (!lyricsAvailable) stringResource(R.string.lyrics_not_found) else null,
                         listState = chordsListState,
-                        contentPadding = contentPadding,
-                        modifier = listModifier
+                        contentPadding = chordsContentPadding,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .then(holdToPauseModifier)
                     )
                 }
             }
@@ -415,6 +603,8 @@ private fun AutoScrollBottomSheet(
         }
     }
 }
+
+private val LyricsPreviewTime = 4.seconds
 
 @Composable
 private fun AutoScrollPresetRow(
