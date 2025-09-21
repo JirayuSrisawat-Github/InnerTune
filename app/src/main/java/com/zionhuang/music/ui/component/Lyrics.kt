@@ -160,10 +160,11 @@ fun Lyrics(
     }
 
     val chords = chordsEntity?.chords
-    val songText by produceState<SongText?>(initialValue = null, chords, mediaMetadata) {
+    var songText by remember { mutableStateOf<SongText?>(null) }
+    LaunchedEffect(chords, mediaMetadata) {
         val metadata = mediaMetadata
         val chordText = chords
-        value = if (metadata == null || chordText.isNullOrBlank() || chordText == CHORDS_NOT_FOUND) {
+        songText = if (metadata == null || chordText.isNullOrBlank() || chordText == CHORDS_NOT_FOUND) {
             null
         } else {
             withContext(Dispatchers.Default) {
