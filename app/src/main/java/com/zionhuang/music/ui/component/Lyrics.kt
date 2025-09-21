@@ -268,7 +268,7 @@ fun Lyrics(
                                 LyricsMenu(
                                     lyricsProvider = { lyricsEntity },
                                     mediaMetadataProvider = { metadata },
-                                    onDismiss = { menuState.hide() },
+                                    onDismiss = { menuState.dismiss() },
                                 )
                             }
                         }) {
