@@ -2,7 +2,7 @@ package com.zionhuang.music.lyrics
 
 import android.text.format.DateUtils
 
-const val animateScrollDuration = 300L
+private const val ANIMATE_SCROLL_DURATION = 300L
 
 @Suppress("RegExpRedundantEscape")
 object LyricsUtils {
@@ -39,7 +39,7 @@ object LyricsUtils {
 
     fun findCurrentLineIndex(lines: List<LyricsEntry>, position: Long): Int {
         for (index in lines.indices) {
-            if (lines[index].time >= position + animateScrollDuration) {
+            if (lines[index].time >= position + ANIMATE_SCROLL_DURATION) {
                 return index - 1
             }
         }

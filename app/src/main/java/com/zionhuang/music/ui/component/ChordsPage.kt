@@ -23,6 +23,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.hasBoundedHeight
+import androidx.compose.ui.unit.hasBoundedWidth
 import androidx.compose.ui.unit.isUnspecified
 import androidx.compose.ui.unit.times
 import com.zionhuang.music.R
@@ -150,13 +152,31 @@ private fun ChordRow(spans: List<ChordSpan>, modifier: Modifier = Modifier) {
             requiredWidth = max(requiredWidth, startPx + placeable.width)
             requiredHeight = max(requiredHeight, placeable.height)
         }
-        val layoutWidth = constraints.constrainWidth(requiredWidth)
-        val layoutHeight = constraints.constrainHeight(requiredHeight)
+        val minWidth = constraints.minWidth
+        val maxWidth = if (constraints.hasBoundedWidth) constraints.maxWidth else requiredWidth
+        val layoutWidth = when {
+            requiredWidth < minWidth -> minWidth
+            requiredWidth > maxWidth -> maxWidth
+            else -> requiredWidth
+        }
+        val minHeight = constraints.minHeight
+        val maxHeight = if (constraints.hasBoundedHeight) constraints.maxHeight else requiredHeight
+        val layoutHeight = when {
+            requiredHeight < minHeight -> minHeight
+            requiredHeight > maxHeight -> maxHeight
+            else -> requiredHeight
+        }
         layout(layoutWidth, layoutHeight) {
             placeables.forEachIndexed { index, placeable ->
                 val span = spans[index]
                 val startPx = (span.startColumn * charWidthPx).roundToInt()
-                val clampedX = startPx.coerceIn(0, layoutWidth - placeable.width)
+                val maxX = layoutWidth - placeable.width
+                val clampedX = when {
+                    maxX <= 0 -> 0
+                    startPx < 0 -> 0
+                    startPx > maxX -> maxX
+                    else -> startPx
+                }
                 placeable.placeRelative(clampedX, 0)
             }
         }
