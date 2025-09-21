@@ -20,8 +20,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.scrollBy
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.gestures.scroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -624,11 +624,7 @@ private fun AutoScrollBottomSheet(
 
 private suspend fun LazyListState.scrollByPixels(delta: Float): Float {
     if (delta == 0f) return 0f
-    var consumed = 0f
-    scroll {
-        consumed = scrollBy(delta)
-    }
-    return consumed
+    return scrollBy(delta)
 }
 
 private val LyricsPreviewTime = 4.seconds
