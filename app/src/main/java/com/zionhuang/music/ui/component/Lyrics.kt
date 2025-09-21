@@ -46,6 +46,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -231,12 +232,15 @@ fun Lyrics(
     }
     val lyricsListState = rememberLazyListState()
     val chordsListState = rememberLazyListState()
-    val chordsHasScrollableContent = remember(songText) {
-        songText?.sections?.any { it.lines.isNotEmpty() } == true
+    val lyricsHasListItems by remember {
+        derivedStateOf { lyricsListState.layoutInfo.totalItemsCount > 0 }
+    }
+    val chordsHasListItems by remember {
+        derivedStateOf { chordsListState.layoutInfo.totalItemsCount > 0 }
     }
     val canAutoScroll = when (viewMode) {
-        ViewMode.Lyrics -> lines.isNotEmpty()
-        ViewMode.Chords -> chordsHasScrollableContent
+        ViewMode.Lyrics -> lines.isNotEmpty() && lyricsHasListItems
+        ViewMode.Chords -> chordsHasListItems
     }
 
     LaunchedEffect(currentLineIndex, lastPreviewTime, viewMode, isSynced, autoScrollActive) {
