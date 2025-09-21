@@ -1,6 +1,9 @@
 package com.zionhuang.music.ui.player
 
 import android.content.res.Configuration
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
@@ -33,6 +36,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -50,6 +54,7 @@ import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -71,11 +76,14 @@ import com.zionhuang.music.constants.PureBlackKey
 import com.zionhuang.music.constants.QueuePeekHeight
 import com.zionhuang.music.constants.SliderStyle
 import com.zionhuang.music.constants.SliderStyleKey
+import com.zionhuang.music.constants.ShowChordsKey
+import com.zionhuang.music.constants.ShowLyricsKey
 import com.zionhuang.music.extensions.togglePlayPause
 import com.zionhuang.music.extensions.toggleRepeatMode
 import com.zionhuang.music.models.MediaMetadata
 import com.zionhuang.music.ui.component.BottomSheet
 import com.zionhuang.music.ui.component.BottomSheetState
+import com.zionhuang.music.ui.component.Lyrics
 import com.zionhuang.music.ui.component.ResizableIconButton
 import com.zionhuang.music.ui.component.rememberBottomSheetState
 import com.zionhuang.music.ui.screens.settings.DarkMode
@@ -117,6 +125,7 @@ fun BottomSheetPlayer(
     val repeatMode by playerConnection.repeatMode.collectAsState()
     val mediaMetadata by playerConnection.mediaMetadata.collectAsState()
     val currentSong by playerConnection.currentSong.collectAsState(initial = null)
+    val error by playerConnection.error.collectAsState()
 
     val canSkipPrevious by playerConnection.canSkipPrevious.collectAsState()
     val canSkipNext by playerConnection.canSkipNext.collectAsState()
@@ -145,6 +154,24 @@ fun BottomSheetPlayer(
         dismissedBound = QueuePeekHeight + WindowInsets.systemBars.asPaddingValues().calculateBottomPadding(),
         expandedBound = state.expandedBound,
     )
+
+    val showLyrics by rememberPreference(ShowLyricsKey, defaultValue = false)
+    val showChordsState = rememberPreference(ShowChordsKey, defaultValue = false)
+    val showChords = showChordsState.value
+    val currentView = LocalView.current
+
+    LaunchedEffect(showLyrics, showChords) {
+        if (!showLyrics && showChords) {
+            showChordsState.value = false
+        }
+    }
+
+    DisposableEffect(showLyrics) {
+        currentView.keepScreenOn = showLyrics
+        onDispose {
+            currentView.keepScreenOn = false
+        }
+    }
 
     BottomSheet(
         state = state,
@@ -378,63 +405,80 @@ fun BottomSheetPlayer(
             }
         }
 
-        when (LocalConfiguration.current.orientation) {
-            Configuration.ORIENTATION_LANDSCAPE -> {
-                Row(
-                    modifier = Modifier
-                        .windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Horizontal))
-                        .padding(bottom = queueSheetState.collapsedBound)
-                ) {
-                    Box(
-                        contentAlignment = Alignment.Center,
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Thumbnail(
-                            sliderPositionProvider = { sliderPosition },
-                            modifier = Modifier.nestedScroll(state.preUpPostDownNestedScrollConnection)
-                        )
+        Box(modifier = Modifier.fillMaxSize()) {
+            AnimatedVisibility(
+                visible = !showLyrics || error != null,
+                enter = fadeIn(),
+                exit = fadeOut()
+            ) {
+                when (LocalConfiguration.current.orientation) {
+                    Configuration.ORIENTATION_LANDSCAPE -> {
+                        Row(
+                            modifier = Modifier
+                                .windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Horizontal))
+                                .padding(bottom = queueSheetState.collapsedBound)
+                        ) {
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Thumbnail(
+                                    modifier = Modifier.nestedScroll(state.preUpPostDownNestedScrollConnection)
+                                )
+                            }
+
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Top))
+                            ) {
+                                Spacer(Modifier.weight(1f))
+
+                                mediaMetadata?.let {
+                                    controlsContent(it)
+                                }
+
+                                Spacer(Modifier.weight(1f))
+                            }
+                        }
                     }
 
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier
-                            .weight(1f)
-                            .windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Top))
-                    ) {
-                        Spacer(Modifier.weight(1f))
+                    else -> {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier
+                                .windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Horizontal))
+                                .padding(bottom = queueSheetState.collapsedBound)
+                        ) {
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Thumbnail(
+                                    modifier = Modifier.nestedScroll(state.preUpPostDownNestedScrollConnection)
+                                )
+                            }
 
-                        mediaMetadata?.let {
-                            controlsContent(it)
+                            mediaMetadata?.let {
+                                controlsContent(it)
+                            }
+
+                            Spacer(Modifier.height(24.dp))
                         }
-
-                        Spacer(Modifier.weight(1f))
                     }
                 }
             }
 
-            else -> {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier
-                        .windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Horizontal))
-                        .padding(bottom = queueSheetState.collapsedBound)
-                ) {
-                    Box(
-                        contentAlignment = Alignment.Center,
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Thumbnail(
-                            sliderPositionProvider = { sliderPosition },
-                            modifier = Modifier.nestedScroll(state.preUpPostDownNestedScrollConnection)
-                        )
-                    }
-
-                    mediaMetadata?.let {
-                        controlsContent(it)
-                    }
-
-                    Spacer(Modifier.height(24.dp))
-                }
+            AnimatedVisibility(
+                visible = showLyrics && error == null,
+                enter = fadeIn(),
+                exit = fadeOut()
+            ) {
+                Lyrics(
+                    sliderPositionProvider = { sliderPosition },
+                    modifier = Modifier.fillMaxSize()
+                )
             }
         }
 
