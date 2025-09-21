@@ -5,6 +5,7 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -186,8 +187,8 @@ fun Lyrics(
     val chordsLoading = chordsEntity == null && !chordsNotFound
     val lyricsAvailable = !lyrics.isNullOrBlank() && lyrics != LYRICS_NOT_FOUND
 
-    LaunchedEffect(chordsNotFound, songText) {
-        if (chordsNotFound || (songText != null && !hasChordContent)) {
+    LaunchedEffect(chordsNotFound) {
+        if (chordsNotFound) {
             showChordsState.value = false
         }
     }
@@ -306,14 +307,14 @@ fun Lyrics(
         topBar = {
             PlayerTopBar(
                 viewMode = viewMode,
-                chordsEnabled = !chordsLoading && !chordsNotFound && hasChordContent,
+                chordsEnabled = !chordsNotFound,
                 lyricsEnabled = lyricsAvailable || lines.isNotEmpty(),
                 translationEnabled = translationEnabled,
                 showTranslationToggle = showTranslationToggle,
                 onModeChange = { mode ->
                     when (mode) {
                         ViewMode.Lyrics -> showChordsState.value = false
-                        ViewMode.Chords -> if (!chordsNotFound && hasChordContent) showChordsState.value = true
+                        ViewMode.Chords -> if (!chordsNotFound) showChordsState.value = true
                     }
                 },
                 onTranslationToggle = { translationEnabled = !translationEnabled },
@@ -505,65 +506,70 @@ private fun LyricsContent(
         }
 
         else -> {
-            LazyColumn(
-                state = listState,
-                contentPadding = PaddingValues(vertical = 24.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-                modifier = Modifier
-                    .fillMaxSize()
-                    .nestedScroll(remember(autoScrollActive) {
-                        object : NestedScrollConnection {
-                            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-                                if (autoScrollActive && source == NestedScrollSource.UserInput) {
-                                    onUserScroll()
-                                }
-                                return Offset.Zero
-                            }
-
-                            override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
-                                if (autoScrollActive && (consumed != Velocity.Zero || available != Velocity.Zero)) {
-                                    onUserScroll()
-                                }
-                                return Velocity.Zero
-                            }
-                        }
-                    }),
+            BoxWithConstraints(
+                modifier = Modifier.fillMaxSize(),
             ) {
-                if (showChordsHint) {
-                    item {
+                val halfHeight = maxHeight / 2
+                LazyColumn(
+                    state = listState,
+                    contentPadding = PaddingValues(top = halfHeight, bottom = halfHeight),
+                    verticalArrangement = Arrangement.spacedBy(0.dp),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .nestedScroll(remember(autoScrollActive) {
+                            object : NestedScrollConnection {
+                                override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                                    if (autoScrollActive && source == NestedScrollSource.UserInput) {
+                                        onUserScroll()
+                                    }
+                                    return Offset.Zero
+                                }
+
+                                override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
+                                    if (autoScrollActive && (consumed != Velocity.Zero || available != Velocity.Zero)) {
+                                        onUserScroll()
+                                    }
+                                    return Velocity.Zero
+                                }
+                            }
+                        }),
+                ) {
+                    if (showChordsHint) {
+                        item {
+                            Text(
+                                text = stringResource(R.string.chords_unavailable_hint),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                            )
+                        }
+                    }
+                    itemsIndexed(lines) { index, entry ->
                         Text(
-                            text = stringResource(R.string.chords_unavailable_hint),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            text = entry.text,
+                            style = bodyStyle,
+                            color = if (index == currentLineIndex) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                            textAlign = textAlign,
+                            fontWeight = if (index == currentLineIndex) FontWeight.Bold else FontWeight.Medium,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                                .padding(horizontal = 16.dp, vertical = 8.dp)
+                                .clickable(enabled = isSynced) { onLineClick(entry) }
+                                .alpha(
+                                    if (!isSynced || index == currentLineIndex) {
+                                        1f
+                                    } else {
+                                        0.6f
+                                    }
+                                ),
                         )
                     }
-                }
-                itemsIndexed(lines) { index, entry ->
-                    Text(
-                        text = entry.text,
-                        style = bodyStyle,
-                        color = if (index == currentLineIndex) {
-                            MaterialTheme.colorScheme.primary
-                        } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                        },
-                        textAlign = textAlign,
-                        fontWeight = if (index == currentLineIndex) FontWeight.Bold else FontWeight.Medium,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 8.dp)
-                            .clickable(enabled = isSynced) { onLineClick(entry) }
-                            .alpha(
-                                if (!isSynced || index == currentLineIndex) {
-                                    1f
-                                } else {
-                                    0.6f
-                                }
-                            ),
-                    )
                 }
             }
         }
