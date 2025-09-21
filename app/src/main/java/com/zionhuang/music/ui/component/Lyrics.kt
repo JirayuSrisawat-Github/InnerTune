@@ -48,6 +48,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -103,6 +104,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
+import kotlin.time.Duration.Companion.seconds
 
 private enum class ViewMode { Lyrics, Chords }
 
@@ -149,6 +151,9 @@ fun Lyrics(
     val isSynced = remember(lyrics) { !lyrics.isNullOrEmpty() && lyrics.startsWith("[") }
 
     var currentLineIndex by remember { mutableIntStateOf(-1) }
+    var deferredCurrentLineIndex by rememberSaveable { mutableIntStateOf(0) }
+    var lastPreviewTime by rememberSaveable { mutableLongStateOf(0L) }
+    var isSeeking by remember { mutableStateOf(false) }
 
     LaunchedEffect(lyrics) {
         if (lyrics.isNullOrEmpty() || !lyrics.startsWith("[")) {
@@ -158,8 +163,18 @@ fun Lyrics(
         while (isActive) {
             delay(50)
             val sliderPosition = sliderPositionProvider()
+            isSeeking = sliderPosition != null
             val position = sliderPosition ?: playerConnection.player.currentPosition
             currentLineIndex = findCurrentLineIndex(lines, position)
+        }
+    }
+
+    LaunchedEffect(isSeeking, lastPreviewTime) {
+        if (isSeeking) {
+            lastPreviewTime = 0L
+        } else if (lastPreviewTime != 0L) {
+            delay(LyricsPreviewTime)
+            lastPreviewTime = 0L
         }
     }
 
@@ -216,9 +231,25 @@ fun Lyrics(
     }
     val lyricsListState = rememberLazyListState()
     val chordsListState = rememberLazyListState()
+    val chordsHasScrollableContent = remember(songText) {
+        songText?.sections?.any { it.lines.isNotEmpty() } == true
+    }
     val canAutoScroll = when (viewMode) {
         ViewMode.Lyrics -> lines.isNotEmpty()
-        ViewMode.Chords -> songText != null && hasChordContent
+        ViewMode.Chords -> chordsHasScrollableContent
+    }
+
+    LaunchedEffect(currentLineIndex, lastPreviewTime, viewMode, isSynced, autoScrollActive) {
+        if (viewMode != ViewMode.Lyrics || !isSynced || autoScrollActive) return@LaunchedEffect
+        if (currentLineIndex != -1 && lastPreviewTime == 0L) {
+            deferredCurrentLineIndex = currentLineIndex
+            val offset = with(density) { 36.dp.toPx().toInt() }
+            if (isSeeking) {
+                lyricsListState.scrollToItem(currentLineIndex, offset)
+            } else {
+                lyricsListState.animateScrollToItem(currentLineIndex, offset)
+            }
+        }
     }
 
     LaunchedEffect(canAutoScroll) {
@@ -355,26 +386,31 @@ fun Lyrics(
                 .then(pointerModifier),
         ) {
             when (viewMode) {
-                ViewMode.Lyrics -> LyricsContent(
-                    lines = lines,
-                    listState = lyricsListState,
-                    currentLineIndex = currentLineIndex,
-                    lyrics = lyrics,
-                    translating = translating,
-                    isSynced = isSynced,
-                    playerTextAlignment = playerTextAlignment,
-                    showChordsHint = chordsNotFound || (songText != null && !hasChordContent),
-                    onLineClick = { entry ->
-                        playerConnection.player.seekTo(entry.time)
-                        autoScrollActive = false
-                    },
-                    onUserScroll = {
-                        if (autoScrollActive && !userScrollInterrupt) {
-                            userScrollInterrupt = true
-                        }
-                    },
-                    autoScrollActive = autoScrollActive,
-                )
+                ViewMode.Lyrics -> {
+                    val displayedLineIndex = if (isSeeking) deferredCurrentLineIndex else currentLineIndex
+                    LyricsContent(
+                        lines = lines,
+                        listState = lyricsListState,
+                        currentLineIndex = displayedLineIndex,
+                        lyrics = lyrics,
+                        translating = translating,
+                        isSynced = isSynced,
+                        playerTextAlignment = playerTextAlignment,
+                        showChordsHint = chordsNotFound || (songText != null && !hasChordContent),
+                        onLineClick = { entry ->
+                            playerConnection.player.seekTo(entry.time)
+                            autoScrollActive = false
+                            lastPreviewTime = 0L
+                        },
+                        onUserScroll = {
+                            lastPreviewTime = System.currentTimeMillis()
+                            if (autoScrollActive && !userScrollInterrupt) {
+                                userScrollInterrupt = true
+                            }
+                        },
+                        autoScrollActive = autoScrollActive,
+                    )
+                }
 
                 ViewMode.Chords -> ChordsContent(
                     songText = songText,
@@ -384,6 +420,7 @@ fun Lyrics(
                     hasChordContent = hasChordContent,
                     lyricsAvailable = lyricsAvailable,
                     onUserScroll = {
+                        lastPreviewTime = System.currentTimeMillis()
                         if (autoScrollActive && !userScrollInterrupt) {
                             userScrollInterrupt = true
                         }
@@ -544,14 +581,14 @@ private fun LyricsContent(
                         .nestedScroll(remember(autoScrollActive) {
                             object : NestedScrollConnection {
                                 override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-                                    if (autoScrollActive && source == NestedScrollSource.UserInput) {
+                                    if (source == NestedScrollSource.UserInput) {
                                         onUserScroll()
                                     }
                                     return Offset.Zero
                                 }
 
                                 override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
-                                    if (autoScrollActive && (consumed != Velocity.Zero || available != Velocity.Zero)) {
+                                    if (consumed != Velocity.Zero || available != Velocity.Zero) {
                                         onUserScroll()
                                     }
                                     return Velocity.Zero
@@ -844,3 +881,5 @@ private fun minLineHeightStyle(style: TextStyle): TextStyle {
     val lineHeight = if (current == TextUnit.Unspecified || current.value < desired.value) desired else current
     return style.copy(lineHeight = lineHeight)
 }
+
+val LyricsPreviewTime = 4.seconds
