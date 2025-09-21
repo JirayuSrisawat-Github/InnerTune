@@ -34,6 +34,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -69,6 +70,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
@@ -419,14 +421,32 @@ private fun PlayerTopBar(
     onTranslationToggle: () -> Unit,
     onMenuClick: () -> Unit,
 ) {
+    val segmentedColors = SegmentedButtonDefaults.colors(
+        activeContainerColor = Color.Transparent,
+        activeContentColor = MaterialTheme.colorScheme.primary,
+        activeBorderColor = MaterialTheme.colorScheme.primary,
+        inactiveContainerColor = Color.Transparent,
+        inactiveContentColor = MaterialTheme.colorScheme.secondary,
+        inactiveBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
+    )
     CenterAlignedTopAppBar(
+        colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+            containerColor = Color.Transparent,
+            scrolledContainerColor = Color.Transparent,
+        ),
         title = {
-            SingleChoiceSegmentedButtonRow {
+            SingleChoiceSegmentedButtonRow(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
+            ) {
                 SegmentedButton(
                     selected = viewMode == ViewMode.Lyrics,
                     onClick = { onModeChange(ViewMode.Lyrics) },
                     enabled = lyricsEnabled,
                     shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
+                    colors = segmentedColors,
+                    modifier = Modifier.weight(1f),
                 ) {
                     Text(text = stringResource(R.string.lyrics_tab))
                 }
@@ -435,6 +455,8 @@ private fun PlayerTopBar(
                     onClick = { onModeChange(ViewMode.Chords) },
                     enabled = chordsEnabled,
                     shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
+                    colors = segmentedColors,
+                    modifier = Modifier.weight(1f),
                 ) {
                     Text(text = stringResource(R.string.chords_tab))
                 }
@@ -542,7 +564,7 @@ private fun LyricsContent(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                                    .padding(horizontal = 24.dp, vertical = 8.dp),
                             )
                         }
                     }
@@ -553,19 +575,19 @@ private fun LyricsContent(
                             color = if (index == currentLineIndex) {
                                 MaterialTheme.colorScheme.primary
                             } else {
-                                MaterialTheme.colorScheme.onSurfaceVariant
+                                MaterialTheme.colorScheme.secondary
                             },
                             textAlign = textAlign,
                             fontWeight = if (index == currentLineIndex) FontWeight.Bold else FontWeight.Medium,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 8.dp)
+                                .padding(horizontal = 24.dp, vertical = 8.dp)
                                 .clickable(enabled = isSynced) { onLineClick(entry) }
                                 .alpha(
                                     if (!isSynced || index == currentLineIndex) {
                                         1f
                                     } else {
-                                        0.6f
+                                        0.5f
                                     }
                                 ),
                         )
@@ -659,7 +681,7 @@ private fun ChordsContent(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                                .padding(horizontal = 24.dp, vertical = 8.dp),
                         )
                     }
                 }
@@ -672,7 +694,7 @@ private fun ChordsContent(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                                    .padding(horizontal = 24.dp, vertical = 4.dp),
                             )
                         }
                     }
@@ -682,7 +704,7 @@ private fun ChordsContent(
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 6.dp),
+                                .padding(horizontal = 24.dp, vertical = 6.dp),
                         ) {
                             if (chordText.isNotEmpty()) {
                                 Text(
@@ -691,14 +713,14 @@ private fun ChordsContent(
                                         fontWeight = FontWeight.Bold,
                                         fontFamily = FontFamily.Monospace,
                                     ),
-                                    color = MaterialTheme.colorScheme.tertiary,
+                                    color = MaterialTheme.colorScheme.primary,
                                 )
                             }
                             if (lyricText.isNotEmpty()) {
                                 Text(
                                     text = lyricText,
                                     style = lyricStyle,
-                                    color = MaterialTheme.colorScheme.onBackground,
+                                    color = MaterialTheme.colorScheme.secondary,
                                     modifier = Modifier.padding(top = if (chordText.isNotEmpty()) 6.dp else 0.dp),
                                 )
                             } else if (chordText.isNotEmpty()) {
