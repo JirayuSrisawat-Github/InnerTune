@@ -20,7 +20,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.lazy.scrollBy
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -97,7 +96,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.withContext
 import kotlin.math.abs
-import kotlin.math.coerceIn
 import kotlin.math.roundToInt
 import kotlin.time.Duration.Companion.seconds
 
@@ -284,7 +282,7 @@ fun Lyrics(
             ViewMode.Lyrics -> lyricsListState
             ViewMode.Chords -> chordsListState
         }
-        val pixelsPerSecond = with(density) { 40.dp.toPx() } * autoScrollSpeed.coerceIn(0f, 1f)
+        val pixelsPerSecond = with(density) { 40.dp.toPx() } * autoScrollSpeed.clamp(0f, 1f)
         if (pixelsPerSecond <= 0f) {
             autoScrollActive = false
             return@LaunchedEffect
@@ -351,7 +349,7 @@ fun Lyrics(
         ) {
             AutoScrollBottomSheet(
                 speed = autoScrollSpeed,
-                onSpeedChange = { autoScrollSpeed = it.coerceIn(0f, 1f) },
+                onSpeedChange = { autoScrollSpeed = it.clamp(0f, 1f) },
                 isActive = autoScrollActive,
                 onToggle = {
                     if (canAutoScroll) {
@@ -585,8 +583,8 @@ private fun AutoScrollBottomSheet(
                 style = MaterialTheme.typography.labelLarge
             )
             Slider(
-                value = speed.coerceIn(0f, 1f),
-                onValueChange = { onSpeedChange(it.coerceIn(0f, 1f)) },
+                value = speed.clamp(0f, 1f),
+                onValueChange = { onSpeedChange(it.clamp(0f, 1f)) },
                 valueRange = 0f..1f
             )
             AutoScrollPresetRow(speed = speed, onSpeedChange = onSpeedChange)
@@ -624,7 +622,61 @@ private fun AutoScrollBottomSheet(
 
 private suspend fun LazyListState.scrollByPixels(delta: Float): Float {
     if (delta == 0f) return 0f
-    return scrollBy(delta)
+    val info = layoutInfo
+    if (info.totalItemsCount == 0) return 0f
+
+    val startIndex = firstVisibleItemIndex
+    val startOffset = firstVisibleItemScrollOffset
+
+    val visibleSizes = info.visibleItemsInfo.associate { it.index to it.size }
+    val defaultSize = info.visibleItemsInfo.maxOfOrNull { it.size } ?: 0
+
+    fun itemSize(index: Int): Int =
+        visibleSizes[index]?.takeIf { it > 0 } ?: defaultSize
+
+    var targetIndex = startIndex
+    var targetOffset = startOffset + delta
+
+    if (delta > 0f) {
+        var remaining = targetOffset
+        var currentIndex = targetIndex
+        var currentSize = itemSize(currentIndex)
+        while (remaining >= currentSize && currentIndex < info.totalItemsCount - 1 && currentSize > 0) {
+            remaining -= currentSize
+            currentIndex += 1
+            currentSize = itemSize(currentIndex)
+        }
+        targetIndex = currentIndex
+        targetOffset = remaining.coerceAtLeast(0f)
+    } else {
+        var remaining = targetOffset
+        var currentIndex = targetIndex
+        var currentSize = itemSize(currentIndex)
+        while (remaining < 0f && currentIndex > 0 && currentSize > 0) {
+            currentIndex -= 1
+            currentSize = itemSize(currentIndex)
+            remaining += currentSize
+        }
+        targetIndex = currentIndex
+        targetOffset = remaining.coerceAtLeast(0f)
+    }
+
+    val targetOffsetInt = targetOffset.roundToInt().coerceAtLeast(0)
+    if (targetIndex == startIndex && targetOffsetInt == startOffset) {
+        return 0f
+    }
+
+    scrollToItem(targetIndex, targetOffsetInt)
+
+    val endIndex = firstVisibleItemIndex
+    val endOffset = firstVisibleItemScrollOffset
+    return if (endIndex != startIndex || endOffset != startOffset) delta else 0f
+}
+
+private fun Float.clamp(min: Float, max: Float): Float = when {
+    this < min -> min
+    this > max -> max
+    else -> this
 }
 
 private val LyricsPreviewTime = 4.seconds
