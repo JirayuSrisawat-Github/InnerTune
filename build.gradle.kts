@@ -10,9 +10,7 @@ buildscript {
     }
 
     repositories {
-        google()
-        mavenCentral()
-        maven { setUrl("https://jitpack.io") }
+        maven("https://maven.jirayu.net/repository/central")
     }
     dependencies {
         classpath(libs.gradle)
