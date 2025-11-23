@@ -38,6 +38,13 @@ jobs:
           MUSIC_SIGNING_STORE_PASSWORD: ${{ secrets.DEBUG_SIGNING_STORE_PASSWORD }}
           MUSIC_SIGNING_KEY_PASSWORD: ${{ secrets.DEBUG_SIGNING_KEY_PASSWORD }}
 
+      - name: Publish to Maven Repository
+        run: ./gradlew publishApkFullDebugPublicationToCentralRepository publishApkFossDebugPublicationToCentralRepository --stacktrace
+        env:
+          MAVEN_USERNAME: ${{ secrets.MAVEN_USERNAME }}
+          MAVEN_PASSWORD: ${{ secrets.MAVEN_PASSWORD }}
+          COMMIT_SHA: ${{ github.sha }}
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:

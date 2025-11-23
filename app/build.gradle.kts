@@ -9,6 +9,7 @@ plugins {
     alias(libs.plugins.hilt)
     alias(libs.plugins.kotlin.ksp)
     alias(libs.plugins.compose.compiler)
+    `maven-publish`
 }
 
 if (isFullBuild && System.getenv("PULL_REQUEST") == null) {
@@ -168,4 +169,43 @@ dependencies {
     "fullImplementation"(libs.opencc4j)
 
     implementation(libs.timber)
+}
+
+afterEvaluate {
+    publishing {
+        publications {
+            android.applicationVariants.all {
+                val variant = this
+                val variantName = variant.name.replaceFirstChar { it.uppercase() }
+
+                create<MavenPublication>("apk$variantName") {
+                    groupId = "com.zionhuang.music"
+                    artifactId = "innertune-${variant.flavorName}-${variant.buildType.name}"
+                    version = System.getenv("COMMIT_SHA") ?: "dev"
+
+                    artifact(variant.outputs.first().outputFile) {
+                        classifier = null
+                        extension = "apk"
+                        builtBy(tasks.named("assemble$variantName"))
+                    }
+
+                    pom {
+                        name.set("InnerTune")
+                        description.set("InnerTune Android Application - ${variant.flavorName} ${variant.buildType.name}")
+                    }
+                }
+            }
+        }
+
+        repositories {
+            maven {
+                name = "central"
+                url = uri("https://maven.jirayu.net/repository/central")
+                credentials {
+                    username = System.getenv("MAVEN_USERNAME")
+                    password = System.getenv("MAVEN_PASSWORD")
+                }
+            }
+        }
+    }
 }
