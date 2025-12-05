@@ -1,11 +1,18 @@
 package com.zionhuang.music.ui.component
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.ui.draw.alpha
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
@@ -22,10 +29,9 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -40,6 +46,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
@@ -57,7 +64,6 @@ import com.zionhuang.music.BuildConfig
 import com.zionhuang.music.LocalPlayerConnection
 import com.zionhuang.music.R
 import com.zionhuang.music.constants.PlayerTextAlignmentKey
-import com.zionhuang.music.constants.ShowChordsKey
 import com.zionhuang.music.constants.TranslateLyricsKey
 import com.zionhuang.music.db.entities.ChordsEntity.Companion.CHORDS_NOT_FOUND
 import com.zionhuang.music.db.entities.LyricsEntity.Companion.LYRICS_NOT_FOUND
@@ -202,7 +208,7 @@ fun Lyrics(
     val translating by playerConnection.translating.collectAsState()
     val lyricsEntity by playerConnection.currentLyrics.collectAsState(initial = null)
     val chordsEntity by playerConnection.currentChords.collectAsState(initial = null)
-    var showChords by rememberPreference(ShowChordsKey, false)
+    var showChordsDialog by remember { mutableStateOf(false) }
     val chords = chordsEntity?.chords
     val lyrics = remember(lyricsEntity, translating) {
         if (translating) null
@@ -257,10 +263,9 @@ fun Lyrics(
     }
 
     val lyricsListState = rememberLazyListState()
-    val chordsListState = rememberLazyListState()
 
-    LaunchedEffect(currentLineIndex, lastPreviewTime, showChords) {
-        if (showChords || !isSynced) return@LaunchedEffect
+    LaunchedEffect(currentLineIndex, lastPreviewTime) {
+        if (!isSynced) return@LaunchedEffect
         if (currentLineIndex != -1) {
             deferredCurrentLineIndex = currentLineIndex
             if (lastPreviewTime == 0L) {
@@ -282,82 +287,8 @@ BoxWithConstraints(
 ) {
     val halfHeight = maxHeight / 2
 
-    Column(
-        modifier = Modifier.fillMaxSize()
-    ) {
-        TabRow(
-            selectedTabIndex = if (showChords) 1 else 0,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Tab(
-                selected = !showChords,
-                onClick = { showChords = false },
-                text = { Text(stringResource(R.string.lyrics_tab)) }
-            )
-            Tab(
-                selected = showChords,
-                onClick = { showChords = true },
-                text = { Text(stringResource(R.string.chords_tab)) }
-            )
-        }
-
-        Box(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
-        ) {
-            if (showChords) {
-                when {
-                    chordsEntity == null -> {
-                        Column(
-                            modifier = Modifier.fillMaxSize(),
-                            verticalArrangement = Arrangement.Center,
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            CircularProgressIndicator()
-                            Text(
-                                text = stringResource(R.string.chords_loading),
-                                color = MaterialTheme.colorScheme.secondary,
-                                modifier = Modifier.padding(top = 16.dp)
-                            )
-                        }
-                    }
-                    chords == CHORDS_NOT_FOUND -> {
-                        Text(
-                            text = stringResource(R.string.chords_not_found),
-                            fontSize = 20.sp,
-                            color = MaterialTheme.colorScheme.secondary,
-                            textAlign = TextAlign.Center,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 24.dp, vertical = 8.dp)
-                        )
-                    }
-                    else -> {
-                        val chordLines = remember(chords) {
-                            chords?.let { ChordLineParser.parseAll(it) } ?: emptyList()
-                        }
-                        LazyColumn(
-                            state = chordsListState,
-                            contentPadding = WindowInsets.systemBars
-                                .only(WindowInsetsSides.Top)
-                                .add(WindowInsets(top = halfHeight, bottom = halfHeight))
-                                .asPaddingValues(),
-                            modifier = Modifier
-                                .fadingEdge(vertical = 64.dp)
-                        ) {
-                            itemsIndexed(chordLines) { _, chordLine ->
-                                ChordLineDisplay(
-                                    chordLine = chordLine,
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-                            }
-                        }
-                    }
-                }
-            } else {
-                LazyColumn(
+    // Lyrics content - always visible
+    LazyColumn(
                     state = lyricsListState,
                     contentPadding = WindowInsets.systemBars
                         .only(WindowInsetsSides.Top)
@@ -425,15 +356,137 @@ BoxWithConstraints(
                     }
                 }
 
-                if (lyrics == LYRICS_NOT_FOUND) {
+    if (lyrics == LYRICS_NOT_FOUND) {
+        Text(
+            text = stringResource(R.string.lyrics_not_found),
+            fontSize = 20.sp,
+            color = MaterialTheme.colorScheme.secondary,
+            textAlign = when (playerTextAlignment) {
+                PlayerTextAlignment.SIDED -> TextAlign.Start
+                PlayerTextAlignment.CENTER -> TextAlign.Center
+            },
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp, vertical = 8.dp)
+                .alpha(0.5f)
+        )
+    }
+
+    // Bottom action buttons
+    mediaMetadata?.let { mediaMetadata ->
+        Row(
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(end = 12.dp)
+        ) {
+            // Chords button
+            IconButton(
+                onClick = { showChordsDialog = true }
+            ) {
+                Icon(
+                    painter = painterResource(id = R.drawable.music_note),
+                    contentDescription = stringResource(R.string.chords_tab),
+                    tint = LocalContentColor.current.copy(alpha = if (chordsEntity != null && chords != CHORDS_NOT_FOUND) 1f else 0.3f)
+                )
+            }
+
+            if (BuildConfig.FLAVOR != "foss") {
+                IconButton(
+                    onClick = {
+                        translationEnabled = !translationEnabled
+                    }
+                ) {
+                    Icon(
+                        painter = painterResource(id = R.drawable.translate),
+                        contentDescription = null,
+                        tint = LocalContentColor.current.copy(alpha = if (translationEnabled) 1f else 0.3f)
+                    )
+                }
+            }
+
+            IconButton(
+                onClick = {
+                    menuState.show {
+                        LyricsMenu(
+                            lyricsProvider = { lyricsEntity },
+                            mediaMetadataProvider = { mediaMetadata },
+                            onDismiss = menuState::dismiss
+                        )
+                    }
+                }
+            ) {
+                Icon(
+                    painter = painterResource(id = R.drawable.more_horiz),
+                    contentDescription = null
+                )
+            }
+        }
+    }
+
+    // Chords Full Page with animation
+    AnimatedVisibility(
+        visible = showChordsDialog,
+        enter = slideInVertically(
+            initialOffsetY = { it },
+            animationSpec = tween(durationMillis = 300)
+        ),
+        exit = slideOutVertically(
+            targetOffsetY = { it },
+            animationSpec = tween(durationMillis = 300)
+        )
+    ) {
+        ChordsPage(
+            chordsEntity = chordsEntity,
+            chords = chords,
+            onDismiss = { showChordsDialog = false }
+        )
+    }
+}
+}
+
+@Composable
+private fun ChordsPage(
+    chordsEntity: com.zionhuang.music.db.entities.ChordsEntity?,
+    chords: String?,
+    onDismiss: () -> Unit
+) {
+    val density = LocalDensity.current
+
+    // Full-screen overlay with same style as lyrics
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.surfaceContainer
+    ) {
+        BoxWithConstraints(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(bottom = 12.dp)
+        ) {
+            val halfHeight = maxHeight / 2
+
+            when {
+                chordsEntity == null -> {
+                    Column(
+                        modifier = Modifier.fillMaxSize(),
+                        verticalArrangement = Arrangement.Center,
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        CircularProgressIndicator()
+                        Text(
+                            text = stringResource(R.string.chords_loading),
+                            color = MaterialTheme.colorScheme.secondary,
+                            modifier = Modifier.padding(top = 16.dp)
+                        )
+                    }
+                }
+                chords == CHORDS_NOT_FOUND -> {
                     Text(
-                        text = stringResource(R.string.lyrics_not_found),
+                        text = stringResource(R.string.chords_not_found),
                         fontSize = 20.sp,
                         color = MaterialTheme.colorScheme.secondary,
-                        textAlign = when (playerTextAlignment) {
-                            PlayerTextAlignment.SIDED -> TextAlign.Start
-                            PlayerTextAlignment.CENTER -> TextAlign.Center
-                        },
+                        textAlign = TextAlign.Center,
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier
                             .fillMaxWidth()
@@ -441,45 +494,40 @@ BoxWithConstraints(
                             .alpha(0.5f)
                     )
                 }
+                else -> {
+                    val chordLines = remember(chords) {
+                        chords?.let { ChordLineParser.parseAll(it) } ?: emptyList()
+                    }
+                    LazyColumn(
+                        contentPadding = WindowInsets.systemBars
+                            .only(WindowInsetsSides.Top)
+                            .add(WindowInsets(top = halfHeight, bottom = halfHeight))
+                            .asPaddingValues(),
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .fadingEdge(vertical = 64.dp)
+                    ) {
+                        itemsIndexed(chordLines) { _, chordLine ->
+                            ChordLineDisplay(
+                                chordLine = chordLine,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                    }
+                }
             }
-        }
-    }
-        mediaMetadata?.let { mediaMetadata ->
-            Row(
+
+            // Close button at bottom right (same position as lyrics menu)
+            IconButton(
+                onClick = onDismiss,
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(end = 12.dp)
             ) {
-                if (BuildConfig.FLAVOR != "foss" && !showChords) {
-                    IconButton(
-                        onClick = {
-                            translationEnabled = !translationEnabled
-                        }
-                    ) {
-                        Icon(
-                            painter = painterResource(id = R.drawable.translate),
-                            contentDescription = null,
-                            tint = LocalContentColor.current.copy(alpha = if (translationEnabled) 1f else 0.3f)
-                        )
-                    }
-                }
-
-                IconButton(
-                    onClick = {
-                        menuState.show {
-                            LyricsMenu(
-                                lyricsProvider = { lyricsEntity },
-                                mediaMetadataProvider = { mediaMetadata },
-                                onDismiss = menuState::dismiss
-                            )
-                        }
-                    }
-                ) {
-                    Icon(
-                        painter = painterResource(id = R.drawable.more_horiz),
-                        contentDescription = null
-                    )
-                }
+                Icon(
+                    painter = painterResource(R.drawable.close),
+                    contentDescription = null
+                )
             }
         }
     }
