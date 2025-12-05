@@ -4,6 +4,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
@@ -13,6 +14,10 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.Slider
 import androidx.compose.ui.draw.alpha
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
@@ -23,6 +28,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -37,10 +43,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -83,7 +91,6 @@ import kotlinx.coroutines.isActive
 import kotlin.time.Duration.Companion.seconds
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.unit.Dp
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
@@ -452,6 +459,23 @@ private fun ChordsPage(
     onDismiss: () -> Unit
 ) {
     val density = LocalDensity.current
+    val coroutineScope = rememberCoroutineScope()
+    val listState = rememberLazyListState()
+
+    var isAutoScrolling by remember { mutableStateOf(false) }
+    var scrollSpeed by remember { mutableFloatStateOf(1f) }
+    var showSpeedControl by remember { mutableStateOf(false) }
+
+    // Auto-scroll effect
+    LaunchedEffect(isAutoScrolling, scrollSpeed) {
+        if (isAutoScrolling) {
+            while (isActive) {
+                delay(50)
+                val scrollAmount = scrollSpeed * 2f
+                listState.scrollBy(scrollAmount)
+            }
+        }
+    }
 
     // Full-screen overlay with same style as lyrics
     Surface(
@@ -499,9 +523,10 @@ private fun ChordsPage(
                         chords?.let { ChordLineParser.parseAll(it) } ?: emptyList()
                     }
                     LazyColumn(
+                        state = listState,
                         contentPadding = WindowInsets.systemBars
                             .only(WindowInsetsSides.Top)
-                            .add(WindowInsets(top = halfHeight, bottom = halfHeight))
+                            .add(WindowInsets(top = halfHeight, bottom = halfHeight + 80.dp))
                             .asPaddingValues(),
                         modifier = Modifier
                             .fillMaxSize()
@@ -517,17 +542,106 @@ private fun ChordsPage(
                 }
             }
 
-            // Close button at bottom right (same position as lyrics menu)
-            IconButton(
-                onClick = onDismiss,
+            // Controls at bottom right
+            Column(
+                horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.spacedBy(4.dp),
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .padding(end = 12.dp)
+                    .padding(end = 12.dp, bottom = 12.dp)
             ) {
-                Icon(
-                    painter = painterResource(R.drawable.close),
-                    contentDescription = null
-                )
+                if (chords != null && chords != CHORDS_NOT_FOUND) {
+                    // Play/pause auto-scroll button
+                    IconButton(
+                        onClick = { isAutoScrolling = !isAutoScrolling }
+                    ) {
+                        Icon(
+                            painter = painterResource(if (isAutoScrolling) R.drawable.pause else R.drawable.play),
+                            contentDescription = if (isAutoScrolling) "Pause auto-scroll" else "Start auto-scroll",
+                            tint = if (isAutoScrolling) MaterialTheme.colorScheme.primary else LocalContentColor.current
+                        )
+                    }
+                }
+
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(0.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (chords != null && chords != CHORDS_NOT_FOUND) {
+                        // Settings menu button
+                        Box {
+                            IconButton(
+                                onClick = { showSpeedControl = !showSpeedControl }
+                            ) {
+                                Icon(
+                                    painter = painterResource(R.drawable.more_vert),
+                                    contentDescription = "Settings"
+                                )
+                            }
+
+                            // Speed control dropdown menu
+                            DropdownMenu(
+                                expanded = showSpeedControl,
+                                onDismissRequest = { showSpeedControl = false },
+                                modifier = Modifier
+                                    .background(MaterialTheme.colorScheme.surface)
+                                    .padding(16.dp)
+                            ) {
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    modifier = Modifier.width(220.dp)
+                                ) {
+                                    Text(
+                                        text = "Auto-Scroll Speed",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(bottom = 8.dp)
+                                    )
+                                    Text(
+                                        text = "${String.format("%.1f", scrollSpeed)}x",
+                                        style = MaterialTheme.typography.headlineSmall,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(bottom = 8.dp)
+                                    )
+                                    Slider(
+                                        value = scrollSpeed,
+                                        onValueChange = { scrollSpeed = it },
+                                        valueRange = 0.5f..3f,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                    Row(
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(top = 4.dp)
+                                    ) {
+                                        Text(
+                                            text = "0.5x",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        Text(
+                                            text = "3.0x",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Close button
+                    IconButton(
+                        onClick = onDismiss
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.close),
+                            contentDescription = "Close"
+                        )
+                    }
+                }
             }
         }
     }
