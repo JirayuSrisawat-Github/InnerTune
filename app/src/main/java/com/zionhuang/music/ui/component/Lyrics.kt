@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.ui.draw.alpha
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.add
@@ -74,6 +75,116 @@ import com.zionhuang.music.utils.rememberPreference
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlin.time.Duration.Companion.seconds
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.unit.Dp
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
+import com.zionhuang.music.chords.ChordLineParser
+import com.zionhuang.music.chords.ChordLine
+
+/**
+ * Displays a line of lyrics with guitar chords positioned above as floating chips.
+ *
+ * Uses text measurement to calculate precise horizontal positions for chord chips,
+ * ensuring proper alignment with the corresponding lyrics text.
+ *
+ * @param chordLine Parsed chord line containing display text and chord placements
+ * @param modifier Optional modifier for the composable
+ */
+@Composable
+private fun ChordLineDisplay(
+    chordLine: ChordLine,
+    modifier: Modifier = Modifier
+) {
+    val textMeasurer = rememberTextMeasurer()
+    val density = LocalDensity.current
+
+    // Detect if this is an instrumental section or just separators (pipes/colons)
+    val trimmedText = chordLine.displayText.trim()
+    val isInstrumental = trimmedText.startsWith("INSTRU", ignoreCase = true) ||
+                         (trimmedText.all { it in ":||-" } && chordLine.placements.isNotEmpty())
+
+    val textStyle = TextStyle(
+        fontSize = 16.sp,
+        fontWeight = FontWeight.Normal
+    )
+
+    // Calculate horizontal positions for each chord based on character index
+    val chordPositions = remember(chordLine) {
+        chordLine.placements.map { placement ->
+            val textBeforeChord = chordLine.displayText.substring(0, placement.index)
+            val width = textMeasurer.measure(
+                text = textBeforeChord,
+                style = textStyle
+            ).size.width
+
+            with(density) { width.toDp() } to placement.chord
+        }
+    }
+
+    if (isInstrumental) {
+        // Special styling for instrumental sections
+        Row(
+            modifier = modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "INSTRU",
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.secondary,
+                modifier = Modifier.alpha(0.7f)
+            )
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier.alpha(0.9f)
+            ) {
+                chordLine.placements.forEach { placement ->
+                    ChordChip(chord = placement.chord)
+                }
+            }
+        }
+    } else {
+        Column(
+            modifier = modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
+        ) {
+            // Chord chips positioned above
+            if (chordPositions.isNotEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(22.dp)
+                        .padding(top = 2.dp)
+                ) {
+                    chordPositions.forEach { (offsetDp, chord) ->
+                        ChordChip(
+                            chord = chord,
+                            modifier = Modifier.offset(x = offsetDp)
+                        )
+                    }
+                }
+            }
+
+            // Lyric text below
+            Text(
+                text = chordLine.displayText,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Normal,
+                color = MaterialTheme.colorScheme.onBackground,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp)
+            )
+        }
+    }
+}
 
 @Composable
 fun Lyrics(
@@ -224,7 +335,9 @@ BoxWithConstraints(
                         )
                     }
                     else -> {
-                        val chordLines = remember(chords) { chords?.lines() ?: emptyList() }
+                        val chordLines = remember(chords) {
+                            chords?.let { ChordLineParser.parseAll(it) } ?: emptyList()
+                        }
                         LazyColumn(
                             state = chordsListState,
                             contentPadding = WindowInsets.systemBars
@@ -234,15 +347,10 @@ BoxWithConstraints(
                             modifier = Modifier
                                 .fadingEdge(vertical = 64.dp)
                         ) {
-                            itemsIndexed(chordLines) { _, line ->
-                                Text(
-                                    text = line,
-                                    fontSize = 18.sp,
-                                    fontFamily = FontFamily.Monospace,
-                                    color = MaterialTheme.colorScheme.onBackground,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 24.dp, vertical = 8.dp)
+                            itemsIndexed(chordLines) { _, chordLine ->
+                                ChordLineDisplay(
+                                    chordLine = chordLine,
+                                    modifier = Modifier.fillMaxWidth()
                                 )
                             }
                         }
