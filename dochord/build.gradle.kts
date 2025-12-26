@@ -17,4 +17,6 @@ dependencies {
     implementation(libs.jsoup)
 
     testImplementation(libs.junit)
+    testImplementation("org.jetbrains.kotlin:kotlin-test:2.0.10")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")
 }

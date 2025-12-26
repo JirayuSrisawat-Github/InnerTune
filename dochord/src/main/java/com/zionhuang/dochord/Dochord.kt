@@ -19,6 +19,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlin.random.Random
 import kotlin.time.Duration.Companion.seconds
+import kotlinx.coroutines.delay
 
 object Dochord {
     private const val CX = "011494955911425855775:gajhx55tewv"
@@ -54,17 +55,43 @@ object Dochord {
         }
     }
 
+    class RateLimitException(message: String) : Exception(message)
+
+    private const val MAX_RETRIES = 3
+    private val RETRY_DELAYS = listOf(2.seconds, 4.seconds, 8.seconds)
+
     @Volatile
     private var cachedTokens: Tokens? = null
 
-    suspend fun fetchChordSheet(title: String, artist: String): Result<ChordSheet> = runCatching {
+    suspend fun fetchChordSheet(title: String, artist: String): Result<ChordSheet> {
         val query = buildQuery(title, artist)
-        val chordUrl = searchChordUrl(query) ?: throw IllegalStateException("Chord result not found")
-        val html = client.get(chordUrl) { applyDefaultHeaders() }.bodyAsText()
-        if (html.contains("GoogleSorry") || html.isBlank()) {
-            throw IllegalStateException("Access to chord page blocked")
+
+        var lastException: Exception? = null
+        repeat(MAX_RETRIES) { attempt ->
+            val result = runCatching {
+                val chordUrl = searchChordUrl(query)
+                    ?: throw IllegalStateException("Chord result not found")
+                val html = client.get(chordUrl) { applyDefaultHeaders() }.bodyAsText()
+                if (html.contains("GoogleSorry") || html.isBlank()) {
+                    cachedTokens = null
+                    throw RateLimitException("Access to chord page blocked")
+                }
+                ChordSheet(ChordParser.parse(html))
+            }
+
+            result.onSuccess {
+                return Result.success(it)
+            }.onFailure { error ->
+                lastException = error as? Exception ?: Exception(error)
+                if (error is RateLimitException && attempt < MAX_RETRIES - 1) {
+                    delay(RETRY_DELAYS[attempt])
+                } else {
+                    return Result.failure(error)
+                }
+            }
         }
-        ChordSheet(ChordParser.parse(html))
+
+        return Result.failure(lastException ?: IllegalStateException("Unknown error"))
     }
 
     private fun buildQuery(title: String, artist: String): String {
@@ -78,12 +105,7 @@ object Dochord {
     }
 
     private suspend fun searchChordUrl(query: String): String? {
-        val urlFromCse = runCatching {
-            searchViaCse(query)
-        }.getOrNull()
-        if (urlFromCse != null) return urlFromCse
-
-        return null
+        return searchViaCse(query)
     }
 
     private suspend fun searchViaCse(query: String): String? {
@@ -113,7 +135,8 @@ object Dochord {
         }.bodyAsText()
 
         if (responseText.contains("GoogleSorry")) {
-            throw IllegalStateException("Rate limited by Google CSE")
+            cachedTokens = null
+            throw RateLimitException("Rate limited by Google CSE")
         }
 
         val payload = responseText.substringAfter("$callback(", missingDelimiterValue = "")

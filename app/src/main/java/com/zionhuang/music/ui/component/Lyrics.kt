@@ -72,6 +72,7 @@ import com.zionhuang.music.BuildConfig
 import com.zionhuang.music.LocalPlayerConnection
 import com.zionhuang.music.R
 import com.zionhuang.music.constants.PlayerTextAlignmentKey
+import com.zionhuang.music.constants.ShowChordsKey
 import com.zionhuang.music.constants.TranslateLyricsKey
 import com.zionhuang.music.db.entities.ChordsEntity.Companion.CHORDS_NOT_FOUND
 import com.zionhuang.music.db.entities.LyricsEntity.Companion.LYRICS_NOT_FOUND
@@ -89,102 +90,72 @@ import com.zionhuang.music.utils.rememberPreference
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlin.time.Duration.Companion.seconds
-import androidx.compose.ui.text.rememberTextMeasurer
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.unit.Dp
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import com.zionhuang.music.chords.ChordLineParser
 import com.zionhuang.music.chords.ChordLine
 
 /**
- * Displays a line of lyrics with guitar chords positioned above as floating chips.
- *
- * Uses text measurement to calculate precise horizontal positions for chord chips,
- * ensuring proper alignment with the corresponding lyrics text.
- *
- * @param chordLine Parsed chord line containing display text and chord placements
- * @param modifier Optional modifier for the composable
+ * Displays a line of lyrics with guitar chords.
  */
 @Composable
 private fun ChordLineDisplay(
     chordLine: ChordLine,
     modifier: Modifier = Modifier
 ) {
-    val textMeasurer = rememberTextMeasurer()
-    val density = LocalDensity.current
-
-    // Detect if this is an instrumental section or just separators (pipes/colons)
     val trimmedText = chordLine.displayText.trim()
-    val isInstrumental = trimmedText.startsWith("INSTRU", ignoreCase = true) ||
-                         (trimmedText.all { it in ":||-" } && chordLine.placements.isNotEmpty())
-
-    val textStyle = TextStyle(
-        fontSize = 16.sp,
-        fontWeight = FontWeight.Normal
+    val hasChords = chordLine.placements.isNotEmpty()
+    
+    // Detect if this is a chord-only line (separators, INTRO, empty, etc.)
+    val isChordOnlyLine = hasChords && (
+        trimmedText.isEmpty() ||
+        trimmedText.all { it in ":||-() " } ||
+        trimmedText.startsWith("INTRO", ignoreCase = true) ||
+        trimmedText.startsWith("INSTRU", ignoreCase = true) ||
+        trimmedText.startsWith("OUTRO", ignoreCase = true) ||
+        trimmedText.startsWith("SOLO", ignoreCase = true) ||
+        trimmedText.startsWith("BRIDGE", ignoreCase = true) ||
+        trimmedText.matches(Regex("^[\\s:|\\-()]*$"))
     )
 
-    // Calculate horizontal positions for each chord based on character index
-    val chordPositions = remember(chordLine) {
-        chordLine.placements.map { placement ->
-            val textBeforeChord = chordLine.displayText.substring(0, placement.index)
-            val width = textMeasurer.measure(
-                text = textBeforeChord,
-                style = textStyle
-            ).size.width
-
-            with(density) { width.toDp() } to placement.chord
-        }
-    }
-
-    if (isInstrumental) {
-        // Special styling for instrumental sections
+    if (isChordOnlyLine) {
+        // Show section label + chords in a horizontal row
         Row(
             modifier = modifier
                 .fillMaxWidth()
-                .padding(horizontal = 24.dp, vertical = 12.dp),
+                .padding(horizontal = 24.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = "INSTRU",
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Medium,
-                color = MaterialTheme.colorScheme.secondary,
-                modifier = Modifier.alpha(0.7f)
-            )
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                modifier = Modifier.alpha(0.9f)
-            ) {
-                chordLine.placements.forEach { placement ->
-                    ChordChip(chord = placement.chord)
-                }
+            if (trimmedText.isNotEmpty() && !trimmedText.all { it in ":||-() " }) {
+                Text(
+                    text = trimmedText.replace(Regex("[:|\\-]+$"), "").trim(),
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.secondary,
+                    modifier = Modifier.alpha(0.7f)
+                )
+            }
+            chordLine.placements.forEach { placement ->
+                ChordChip(chord = placement.chord)
             }
         }
-    } else {
+    } else if (hasChords) {
+        // Normal line with lyrics and chords
         Column(
             modifier = modifier
                 .fillMaxWidth()
                 .padding(horizontal = 24.dp)
         ) {
-            // Chord chips positioned above
-            if (chordPositions.isNotEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(22.dp)
-                        .padding(top = 2.dp)
-                ) {
-                    chordPositions.forEach { (offsetDp, chord) ->
-                        ChordChip(
-                            chord = chord,
-                            modifier = Modifier.offset(x = offsetDp)
-                        )
-                    }
+            // Chord row - show all chords with spacing
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                chordLine.placements.forEach { placement ->
+                    ChordChip(chord = placement.chord)
                 }
             }
-
+            
             // Lyric text below
             Text(
                 text = chordLine.displayText,
@@ -193,8 +164,24 @@ private fun ChordLineDisplay(
                 color = MaterialTheme.colorScheme.onBackground,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 4.dp)
+                    .padding(vertical = 2.dp)
             )
+        }
+    } else {
+        // No chords - just lyrics
+        if (trimmedText.isNotEmpty()) {
+            Text(
+                text = chordLine.displayText,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Normal,
+                color = MaterialTheme.colorScheme.onBackground,
+                modifier = modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp, vertical = 4.dp)
+            )
+        } else {
+            // Empty line - add spacing
+            Spacer(modifier = modifier.height(8.dp))
         }
     }
 }
@@ -216,6 +203,7 @@ fun Lyrics(
     val lyricsEntity by playerConnection.currentLyrics.collectAsState(initial = null)
     val chordsEntity by playerConnection.currentChords.collectAsState(initial = null)
     var showChordsDialog by remember { mutableStateOf(false) }
+    var showChordsPreference by rememberPreference(ShowChordsKey, false)
     val chords = chordsEntity?.chords
     val lyrics = remember(lyricsEntity, translating) {
         if (translating) null
@@ -229,6 +217,12 @@ fun Lyrics(
     }
     val isSynced = remember(lyrics) {
         !lyrics.isNullOrEmpty() && lyrics.startsWith("[")
+    }
+
+    LaunchedEffect(showChordsDialog) {
+        if (showChordsDialog && !showChordsPreference) {
+            showChordsPreference = true
+        }
     }
 
     var currentLineIndex by remember {
