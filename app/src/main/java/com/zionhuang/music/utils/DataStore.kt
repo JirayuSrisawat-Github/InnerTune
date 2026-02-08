@@ -14,19 +14,31 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.properties.ReadOnlyProperty
 
 val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
 
-operator fun <T> DataStore<Preferences>.get(key: Preferences.Key<T>): T? =
-    runBlocking(Dispatchers.IO) {
-        data.first()[key]
-    }
+// Cache for preferences to avoid repeated runBlocking calls
+private val preferenceCache = ConcurrentHashMap<Preferences.Key<*>, Any?>()
 
-fun <T> DataStore<Preferences>.get(key: Preferences.Key<T>, defaultValue: T): T =
-    runBlocking(Dispatchers.IO) {
-        data.first()[key] ?: defaultValue
-    }
+@Suppress("UNCHECKED_CAST")
+operator fun <T> DataStore<Preferences>.get(key: Preferences.Key<T>): T? {
+    return preferenceCache.getOrPut(key) {
+        runBlocking(Dispatchers.IO) {
+            data.first()[key]
+        }
+    } as T?
+}
+
+@Suppress("UNCHECKED_CAST")
+fun <T> DataStore<Preferences>.get(key: Preferences.Key<T>, defaultValue: T): T {
+    return preferenceCache.getOrPut(key) {
+        runBlocking(Dispatchers.IO) {
+            data.first()[key] ?: defaultValue
+        }
+    } as? T ?: defaultValue
+}
 
 fun <T> preference(
     context: Context,

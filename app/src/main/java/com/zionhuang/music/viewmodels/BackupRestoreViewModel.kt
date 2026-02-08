@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import com.zionhuang.music.MainActivity
 import com.zionhuang.music.R
 import com.zionhuang.music.db.InternalDatabase
@@ -18,7 +19,8 @@ import com.zionhuang.music.playback.MusicService.Companion.PERSISTENT_QUEUE_FILE
 import com.zionhuang.music.utils.reportException
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.util.zip.ZipEntry
@@ -30,64 +32,72 @@ class BackupRestoreViewModel @Inject constructor(
     val database: MusicDatabase,
 ) : ViewModel() {
     fun backup(context: Context, uri: Uri) {
-        runCatching {
-            context.applicationContext.contentResolver.openOutputStream(uri)?.use {
-                it.buffered().zipOutputStream().use { outputStream ->
-                    (context.filesDir / "datastore" / SETTINGS_FILENAME).inputStream().buffered().use { inputStream ->
-                        outputStream.putNextEntry(ZipEntry(SETTINGS_FILENAME))
-                        inputStream.copyTo(outputStream)
-                    }
-                    runBlocking(Dispatchers.IO) {
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching {
+                context.applicationContext.contentResolver.openOutputStream(uri)?.use {
+                    it.buffered().zipOutputStream().use { outputStream ->
+                        (context.filesDir / "datastore" / SETTINGS_FILENAME).inputStream().buffered().use { inputStream ->
+                            outputStream.putNextEntry(ZipEntry(SETTINGS_FILENAME))
+                            inputStream.copyTo(outputStream)
+                        }
                         database.checkpoint()
-                    }
-                    FileInputStream(database.openHelper.writableDatabase.path).use { inputStream ->
-                        outputStream.putNextEntry(ZipEntry(InternalDatabase.DB_NAME))
-                        inputStream.copyTo(outputStream)
+                        FileInputStream(database.openHelper.writableDatabase.path).use { inputStream ->
+                            outputStream.putNextEntry(ZipEntry(InternalDatabase.DB_NAME))
+                            inputStream.copyTo(outputStream)
+                        }
                     }
                 }
+            }.onSuccess {
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, R.string.backup_create_success, Toast.LENGTH_SHORT).show()
+                }
+            }.onFailure {
+                reportException(it)
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, R.string.backup_create_failed, Toast.LENGTH_SHORT).show()
+                }
             }
-        }.onSuccess {
-            Toast.makeText(context, R.string.backup_create_success, Toast.LENGTH_SHORT).show()
-        }.onFailure {
-            reportException(it)
-            Toast.makeText(context, R.string.backup_create_failed, Toast.LENGTH_SHORT).show()
         }
     }
 
     fun restore(context: Context, uri: Uri) {
-        runCatching {
-            context.applicationContext.contentResolver.openInputStream(uri)?.use {
-                it.zipInputStream().use { inputStream ->
-                    var entry = tryOrNull { inputStream.nextEntry } // prevent ZipException
-                    while (entry != null) {
-                        when (entry.name) {
-                            SETTINGS_FILENAME -> {
-                                (context.filesDir / "datastore" / SETTINGS_FILENAME).outputStream().use { outputStream ->
-                                    inputStream.copyTo(outputStream)
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching {
+                context.applicationContext.contentResolver.openInputStream(uri)?.use {
+                    it.zipInputStream().use { inputStream ->
+                        var entry = tryOrNull { inputStream.nextEntry } // prevent ZipException
+                        while (entry != null) {
+                            when (entry.name) {
+                                SETTINGS_FILENAME -> {
+                                    (context.filesDir / "datastore" / SETTINGS_FILENAME).outputStream().use { outputStream ->
+                                        inputStream.copyTo(outputStream)
+                                    }
                                 }
-                            }
 
-                            InternalDatabase.DB_NAME -> {
-                                runBlocking(Dispatchers.IO) {
+                                InternalDatabase.DB_NAME -> {
                                     database.checkpoint()
-                                }
-                                database.close()
-                                FileOutputStream(database.openHelper.writableDatabase.path).use { outputStream ->
-                                    inputStream.copyTo(outputStream)
+                                    database.close()
+                                    FileOutputStream(database.openHelper.writableDatabase.path).use { outputStream ->
+                                        inputStream.copyTo(outputStream)
+                                    }
                                 }
                             }
+                            entry = tryOrNull { inputStream.nextEntry } // prevent ZipException
                         }
-                        entry = tryOrNull { inputStream.nextEntry } // prevent ZipException
                     }
                 }
+                withContext(Dispatchers.Main) {
+                    context.stopService(Intent(context, MusicService::class.java))
+                    context.filesDir.resolve(PERSISTENT_QUEUE_FILE).delete()
+                    context.startActivity(Intent(context, MainActivity::class.java))
+                    exitProcess(0)
+                }
+            }.onFailure {
+                reportException(it)
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, R.string.restore_failed, Toast.LENGTH_SHORT).show()
+                }
             }
-            context.stopService(Intent(context, MusicService::class.java))
-            context.filesDir.resolve(PERSISTENT_QUEUE_FILE).delete()
-            context.startActivity(Intent(context, MainActivity::class.java))
-            exitProcess(0)
-        }.onFailure {
-            reportException(it)
-            Toast.makeText(context, R.string.restore_failed, Toast.LENGTH_SHORT).show()
         }
     }
 
