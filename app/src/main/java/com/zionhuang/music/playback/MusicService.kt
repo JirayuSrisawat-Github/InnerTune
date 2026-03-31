@@ -620,7 +620,6 @@ class MusicService : MediaLibraryService(),
 
     private fun createDataSourceFactory(): DataSource.Factory {
         val songUrlCache = HashMap<String, Pair<String, Long>>()
-        val formatCache = HashMap<String, FormatEntity?>()
         return ResolvingDataSource.Factory(createCacheDataSource()) { dataSpec ->
             val mediaId = dataSpec.key ?: error("No media id")
 
@@ -638,10 +637,7 @@ class MusicService : MediaLibraryService(),
 
             // Check whether format exists so that users from older version can view format details
             // There may be inconsistent between the downloaded file and the displayed info if user change audio quality frequently
-            // Use cached format if available, otherwise fetch synchronously but in IO context
-            val playedFormat = formatCache.getOrPut(mediaId) {
-                runBlocking(Dispatchers.IO) { database.format(mediaId).first() }
-            }
+            val playedFormat = runBlocking(Dispatchers.IO) { database.format(mediaId).first() }
             val playerResponse = runBlocking(Dispatchers.IO) {
                 YouTube.player(mediaId)
             }.getOrElse { throwable ->
@@ -679,20 +675,19 @@ class MusicService : MediaLibraryService(),
                         }
                 } ?: throw PlaybackException(getString(R.string.error_no_stream), null, ERROR_CODE_NO_STREAM)
 
-            val formatEntity = FormatEntity(
-                id = mediaId,
-                itag = format.itag,
-                mimeType = format.mimeType.split(";")[0],
-                codecs = format.mimeType.split("codecs=")[1].removeSurrounding("\""),
-                bitrate = format.bitrate,
-                sampleRate = format.audioSampleRate,
-                contentLength = format.contentLength!!,
-                loudnessDb = playerResponse.playerConfig?.audioConfig?.loudnessDb
-            )
-            // Update format cache
-            formatCache[mediaId] = formatEntity
             database.query {
-                upsert(formatEntity)
+                upsert(
+                    FormatEntity(
+                        id = mediaId,
+                        itag = format.itag,
+                        mimeType = format.mimeType.split(";")[0],
+                        codecs = format.mimeType.split("codecs=")[1].removeSurrounding("\""),
+                        bitrate = format.bitrate,
+                        sampleRate = format.audioSampleRate,
+                        contentLength = format.contentLength!!,
+                        loudnessDb = playerResponse.playerConfig?.audioConfig?.loudnessDb
+                    )
+                )
             }
             scope.launch(Dispatchers.IO) { recoverSong(mediaId, playerResponse) }
 
