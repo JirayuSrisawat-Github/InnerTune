@@ -82,7 +82,7 @@ fun DiscordLoginScreen(
                     @JavascriptInterface
                     fun onRetrieveToken(token: String) {
                         discordToken = token
-                        scope.launch(Dispatchers.Main) {
+                        scope.launch {
                             navController.navigateUp()
                         }
                     }
@@ -91,6 +91,9 @@ fun DiscordLoginScreen(
                 webView = this
                 loadUrl("https://discord.com/login")
             }
+        },
+        onRelease = {
+            it.destroy()
         }
     )
 

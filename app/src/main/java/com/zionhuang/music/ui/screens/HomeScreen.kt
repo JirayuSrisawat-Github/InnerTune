@@ -389,29 +389,26 @@ fun HomeScreen(
                             items = quickPicks,
                             key = { it.id }
                         ) { originalSong ->
-                            // fetch song from database to keep updated
-                            val song by database.song(originalSong.id).collectAsState(initial = originalSong)
-
                             SongListItem(
-                                song = song!!,
+                                song = originalSong,
                                 showInLibraryIcon = true,
-                                isActive = song!!.id == mediaMetadata?.id,
+                                isActive = originalSong.id == mediaMetadata?.id,
                                 isPlaying = isPlaying,
                                 modifier = Modifier
                                     .width(horizontalLazyGridItemWidth)
                                     .combinedClickable(
                                         onClick = {
-                                            if (song!!.id == mediaMetadata?.id) {
+                                            if (originalSong.id == mediaMetadata?.id) {
                                                 playerConnection.player.togglePlayPause()
                                             } else {
-                                                playerConnection.playQueue(YouTubeQueue.radio(song!!.toMediaMetadata()))
+                                                playerConnection.playQueue(YouTubeQueue.radio(originalSong.toMediaMetadata()))
                                             }
                                         },
                                         onLongClick = {
                                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                             menuState.show {
                                                 SongMenu(
-                                                    originalSong = song!!,
+                                                    originalSong = originalSong,
                                                     navController = navController,
                                                     onDismiss = menuState::dismiss
                                                 )
@@ -451,28 +448,26 @@ fun HomeScreen(
                             items = forgottenFavorites,
                             key = { it.id }
                         ) { originalSong ->
-                            val song by database.song(originalSong.id).collectAsState(initial = originalSong)
-
                             SongListItem(
-                                song = song!!,
+                                song = originalSong,
                                 showInLibraryIcon = true,
-                                isActive = song!!.id == mediaMetadata?.id,
+                                isActive = originalSong.id == mediaMetadata?.id,
                                 isPlaying = isPlaying,
                                 modifier = Modifier
                                     .width(horizontalLazyGridItemWidth)
                                     .combinedClickable(
                                         onClick = {
-                                            if (song!!.id == mediaMetadata?.id) {
+                                            if (originalSong.id == mediaMetadata?.id) {
                                                 playerConnection.player.togglePlayPause()
                                             } else {
-                                                playerConnection.playQueue(YouTubeQueue.radio(song!!.toMediaMetadata()))
+                                                playerConnection.playQueue(YouTubeQueue.radio(originalSong.toMediaMetadata()))
                                             }
                                         },
                                         onLongClick = {
                                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                             menuState.show {
                                                 SongMenu(
-                                                    originalSong = song!!,
+                                                    originalSong = originalSong,
                                                     navController = navController,
                                                     onDismiss = menuState::dismiss
                                                 )
@@ -506,7 +501,10 @@ fun HomeScreen(
                             }) * rows)
                             .animateItem()
                     ) {
-                        items(keepListening) {
+                        items(
+                            items = keepListening,
+                            key = { it.id }
+                        ) {
                             localGridItem(it)
                         }
                     }
@@ -577,7 +575,10 @@ fun HomeScreen(
                             .asPaddingValues(),
                         modifier = Modifier.animateItem()
                     ) {
-                        items(it.items) { item ->
+                        items(
+                            items = it.items,
+                            key = { it.id }
+                        ) { item ->
                             ytGridItem(item)
                         }
                     }
@@ -612,7 +613,10 @@ fun HomeScreen(
                             .asPaddingValues(),
                         modifier = Modifier.animateItem()
                     ) {
-                        items(it.items) { item ->
+                        items(
+                            items = it.items,
+                            key = { it.id }
+                        ) { item ->
                             ytGridItem(item)
                         }
                     }
@@ -688,7 +692,10 @@ fun HomeScreen(
                             .height((MoodAndGenresButtonHeight + 12.dp) * 4 + 12.dp)
                             .animateItem()
                     ) {
-                        items(moodAndGenres) {
+                        items(
+                            items = moodAndGenres,
+                            key = { it.title }
+                        ) {
                             MoodAndGenresButton(
                                 title = it.title,
                                 onClick = {

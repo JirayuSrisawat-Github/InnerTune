@@ -8,6 +8,7 @@ import android.database.SQLException
 import android.media.audiofx.AudioEffect
 import android.net.ConnectivityManager
 import android.os.Binder
+import android.util.LruCache
 import androidx.core.content.getSystemService
 import androidx.core.net.toUri
 import androidx.datastore.preferences.core.edit
@@ -172,7 +173,8 @@ class MusicService : MediaLibraryService(),
     }
 
     private val normalizeFactor = MutableStateFlow(1f)
-    val playerVolume = MutableStateFlow(dataStore.get(PlayerVolumeKey, 1f).coerceIn(0f, 1f))
+    lateinit var playerVolume: MutableStateFlow<Float>
+    private val formatCache = LruCache<String, FormatEntity?>(50)
 
     lateinit var sleepTimer: SleepTimer
 
@@ -193,6 +195,10 @@ class MusicService : MediaLibraryService(),
 
     override fun onCreate() {
         super.onCreate()
+
+        val prefs = runBlocking(Dispatchers.IO) { dataStore.data.first() }
+        playerVolume = MutableStateFlow((prefs[PlayerVolumeKey] ?: 1f).coerceIn(0f, 1f))
+
         setMediaNotificationProvider(
             DefaultMediaNotificationProvider(this, { NOTIFICATION_ID }, CHANNEL_ID, R.string.music_player)
                 .apply {
@@ -234,7 +240,7 @@ class MusicService : MediaLibraryService(),
             )
             .setBitmapLoader(CoilBitmapLoader(this, scope))
             .build()
-        player.repeatMode = dataStore.get(RepeatModeKey, REPEAT_MODE_OFF)
+        player.repeatMode = prefs[RepeatModeKey] ?: REPEAT_MODE_OFF
 
         // Keep a connected controller so that notification works
         val sessionToken = SessionToken(this, ComponentName(this, MusicService::class.java))
@@ -322,23 +328,26 @@ class MusicService : MediaLibraryService(),
                 }
             }
 
-        if (dataStore.get(PersistentQueueKey, true)) {
-            runCatching {
-                filesDir.resolve(PERSISTENT_QUEUE_FILE).inputStream().use { fis ->
-                    ObjectInputStream(fis).use { oos ->
-                        oos.readObject() as PersistQueue
+        val persistentQueueEnabled = prefs[PersistentQueueKey] ?: true
+        if (persistentQueueEnabled) {
+            scope.launch(Dispatchers.IO) {
+                runCatching {
+                    filesDir.resolve(PERSISTENT_QUEUE_FILE).inputStream().use { fis ->
+                        ObjectInputStream(fis).use { oos ->
+                            oos.readObject() as PersistQueue
+                        }
                     }
+                }.onSuccess { queue ->
+                    playQueue(
+                        queue = ListQueue(
+                            title = queue.title,
+                            items = queue.items.map { it.toMediaItem() },
+                            startIndex = queue.mediaItemIndex,
+                            position = queue.position
+                        ),
+                        playWhenReady = false
+                    )
                 }
-            }.onSuccess { queue ->
-                playQueue(
-                    queue = ListQueue(
-                        title = queue.title,
-                        items = queue.items.map { it.toMediaItem() },
-                        startIndex = queue.mediaItemIndex,
-                        position = queue.position
-                    ),
-                    playWhenReady = false
-                )
             }
         }
 
@@ -637,7 +646,9 @@ class MusicService : MediaLibraryService(),
 
             // Check whether format exists so that users from older version can view format details
             // There may be inconsistent between the downloaded file and the displayed info if user change audio quality frequently
-            val playedFormat = runBlocking(Dispatchers.IO) { database.format(mediaId).first() }
+            val playedFormat = formatCache[mediaId]
+                ?: runBlocking(Dispatchers.IO) { database.format(mediaId).first() }
+                    .also { formatCache.put(mediaId, it) }
             val playerResponse = runBlocking(Dispatchers.IO) {
                 YouTube.player(mediaId)
             }.getOrElse { throwable ->
@@ -689,6 +700,19 @@ class MusicService : MediaLibraryService(),
                     )
                 )
             }
+            formatCache.put(
+                mediaId,
+                FormatEntity(
+                    id = mediaId,
+                    itag = format.itag,
+                    mimeType = format.mimeType.split(";")[0],
+                    codecs = format.mimeType.split("codecs=")[1].removeSurrounding("\""),
+                    bitrate = format.bitrate,
+                    sampleRate = format.audioSampleRate,
+                    contentLength = format.contentLength!!,
+                    loudnessDb = playerResponse.playerConfig?.audioConfig?.loudnessDb
+                )
+            )
             scope.launch(Dispatchers.IO) { recoverSong(mediaId, playerResponse) }
 
             songUrlCache[mediaId] = format.url!! to playerResponse.streamingData!!.expiresInSeconds * 1000L

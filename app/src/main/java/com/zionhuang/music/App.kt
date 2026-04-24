@@ -29,29 +29,34 @@ import com.zionhuang.music.utils.dataStore
 import com.zionhuang.music.utils.get
 import com.zionhuang.music.utils.reportException
 import dagger.hilt.android.HiltAndroidApp
-import kotlinx.coroutines.DelicateCoroutinesApi
-import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import timber.log.Timber
 import java.net.Proxy
 import java.util.Locale
 
 @HiltAndroidApp
 class App : Application(), ImageLoaderFactory {
-    @OptIn(DelicateCoroutinesApi::class)
+    private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
     override fun onCreate() {
         super.onCreate()
         Timber.plant(Timber.DebugTree())
 
         val locale = Locale.getDefault()
         val languageTag = locale.toLanguageTag().replace("-Hant", "") // replace zh-Hant-* to zh-*
+        val prefs = runBlocking(Dispatchers.IO) { dataStore.data.first() }
         YouTube.locale = YouTubeLocale(
-            gl = dataStore[ContentCountryKey]?.takeIf { it != SYSTEM_DEFAULT }
+            gl = prefs[ContentCountryKey]?.takeIf { it != SYSTEM_DEFAULT }
                 ?: locale.country.takeIf { it in CountryCodeToName }
                 ?: "US",
-            hl = dataStore[ContentLanguageKey]?.takeIf { it != SYSTEM_DEFAULT }
+            hl = prefs[ContentLanguageKey]?.takeIf { it != SYSTEM_DEFAULT }
                 ?: locale.language.takeIf { it in LanguageCodeToName }
                 ?: languageTag.takeIf { it in LanguageCodeToName }
                 ?: "en"
@@ -60,11 +65,11 @@ class App : Application(), ImageLoaderFactory {
             KuGou.useTraditionalChinese = true
         }
 
-        if (dataStore[ProxyEnabledKey] == true) {
+        if (prefs[ProxyEnabledKey] == true) {
             try {
                 YouTube.proxy = Proxy(
-                    dataStore[ProxyTypeKey].toEnum(defaultValue = Proxy.Type.HTTP),
-                    dataStore[ProxyUrlKey]!!.toInetSocketAddress()
+                    prefs[ProxyTypeKey].toEnum(defaultValue = Proxy.Type.HTTP),
+                    prefs[ProxyUrlKey]!!.toInetSocketAddress()
                 )
             } catch (e: Exception) {
                 Toast.makeText(this, "Failed to parse proxy url.", LENGTH_SHORT).show()
@@ -72,11 +77,11 @@ class App : Application(), ImageLoaderFactory {
             }
         }
 
-        if (dataStore[UseLoginForBrowse] == true) {
+        if (prefs[UseLoginForBrowse] == true) {
             YouTube.useLoginForBrowse = true
         }
 
-        GlobalScope.launch {
+        applicationScope.launch {
             dataStore.data
                 .map { it[VisitorDataKey] }
                 .distinctUntilChanged()
@@ -90,7 +95,7 @@ class App : Application(), ImageLoaderFactory {
                         } ?: YouTube.DEFAULT_VISITOR_DATA
                 }
         }
-        GlobalScope.launch {
+        applicationScope.launch {
             dataStore.data
                 .map { it[InnerTubeCookieKey] }
                 .distinctUntilChanged()

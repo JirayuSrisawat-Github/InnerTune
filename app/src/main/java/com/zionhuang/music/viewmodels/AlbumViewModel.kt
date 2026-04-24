@@ -8,6 +8,7 @@ import com.zionhuang.innertube.models.AlbumItem
 import com.zionhuang.music.db.MusicDatabase
 import com.zionhuang.music.utils.reportException
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.first
@@ -26,7 +27,7 @@ class AlbumViewModel @Inject constructor(
     val otherVersions = MutableStateFlow<List<AlbumItem>>(emptyList())
 
     init {
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             val album = database.album(albumId).first()
             YouTube.album(albumId).onSuccess {
                 if (album == null || album.album.songCount == 0) {
