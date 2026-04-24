@@ -2,6 +2,7 @@ package com.zionhuang.music.playback
 
 import android.content.Context
 import android.net.ConnectivityManager
+import android.util.LruCache
 import androidx.core.content.getSystemService
 import androidx.core.net.toUri
 import androidx.media3.common.PlaybackException
@@ -45,6 +46,7 @@ class DownloadUtil @Inject constructor(
     private val connectivityManager = context.getSystemService<ConnectivityManager>()!!
     private val audioQuality by enumPreference(context, AudioQualityKey, AudioQuality.AUTO)
     private val songUrlCache = HashMap<String, Pair<String, Long>>()
+    private val formatCache = LruCache<String, FormatEntity?>(50)
     private val dataSourceFactory = ResolvingDataSource.Factory(
         CacheDataSource.Factory()
             .setCache(playerCache)
@@ -67,7 +69,9 @@ class DownloadUtil @Inject constructor(
             return@Factory dataSpec.withUri(it.first.toUri())
         }
 
-        val playedFormat = runBlocking(Dispatchers.IO) { database.format(mediaId).first() }
+        val playedFormat = formatCache[mediaId]
+            ?: runBlocking(Dispatchers.IO) { database.format(mediaId).first() }
+                .also { formatCache.put(mediaId, it) }
         val playerResponse = runBlocking(Dispatchers.IO) {
             YouTube.player(mediaId)
         }.getOrThrow()
@@ -93,20 +97,20 @@ class DownloadUtil @Inject constructor(
                 it.copy(url = "${it.url}&range=0-${it.contentLength ?: 10000000}")
             }
 
+        val formatEntity = FormatEntity(
+            id = mediaId,
+            itag = format.itag,
+            mimeType = format.mimeType.split(";")[0],
+            codecs = format.mimeType.split("codecs=")[1].removeSurrounding("\""),
+            bitrate = format.bitrate,
+            sampleRate = format.audioSampleRate,
+            contentLength = format.contentLength!!,
+            loudnessDb = playerResponse.playerConfig?.audioConfig?.loudnessDb
+        )
         database.query {
-            upsert(
-                FormatEntity(
-                    id = mediaId,
-                    itag = format.itag,
-                    mimeType = format.mimeType.split(";")[0],
-                    codecs = format.mimeType.split("codecs=")[1].removeSurrounding("\""),
-                    bitrate = format.bitrate,
-                    sampleRate = format.audioSampleRate,
-                    contentLength = format.contentLength!!,
-                    loudnessDb = playerResponse.playerConfig?.audioConfig?.loudnessDb
-                )
-            )
+            upsert(formatEntity)
         }
+        formatCache.put(mediaId, formatEntity)
 
         songUrlCache[mediaId] = format.url!! to playerResponse.streamingData!!.expiresInSeconds * 1000L
         dataSpec.withUri(format.url!!.toUri())

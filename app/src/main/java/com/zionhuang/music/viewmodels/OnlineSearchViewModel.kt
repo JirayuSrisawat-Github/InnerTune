@@ -18,6 +18,7 @@ import com.zionhuang.music.utils.get
 import com.zionhuang.music.utils.reportException
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -34,7 +35,7 @@ class OnlineSearchViewModel @Inject constructor(
     val viewStateMap = mutableStateMapOf<String, ItemsPage?>()
 
     init {
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             filter.collect { filter ->
                 if (filter == null) {
                     if (summaryPage == null) {
@@ -68,7 +69,7 @@ class OnlineSearchViewModel @Inject constructor(
 
     fun loadMore() {
         val filter = filter.value?.value
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             if (filter == null) return@launch
             val viewState = viewStateMap[filter] ?: return@launch
             val continuation = viewState.continuation

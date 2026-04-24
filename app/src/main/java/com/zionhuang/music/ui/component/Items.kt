@@ -390,38 +390,9 @@ fun AlbumListItem(
     modifier: Modifier = Modifier,
     showLikedIcon: Boolean = true,
     badges: @Composable RowScope.() -> Unit = {
-        val database = LocalDatabase.current
-        val downloadUtil = LocalDownloadUtil.current
-        var songs by remember {
-            mutableStateOf(emptyList<Song>())
-        }
-
-        LaunchedEffect(Unit) {
-            database.albumSongs(album.id).collect {
-                songs = it
-            }
-        }
-
-        var downloadState by remember {
-            mutableIntStateOf(Download.STATE_STOPPED)
-        }
-
-        LaunchedEffect(songs) {
-            if (songs.isEmpty()) return@LaunchedEffect
-            downloadUtil.downloads.collect { downloads ->
-                downloadState = when {
-                    songs.all { downloads[it.id]?.state == STATE_COMPLETED } -> STATE_COMPLETED
-                    songs.all { downloads[it.id]?.state in listOf(STATE_QUEUED, STATE_DOWNLOADING, STATE_COMPLETED) } -> STATE_DOWNLOADING
-                    else -> Download.STATE_STOPPED
-                }
-            }
-        }
-
         if (showLikedIcon && album.album.bookmarkedAt != null) {
             Icon.Favorite()
         }
-
-        Icon.Download(downloadState)
     },
     isActive: Boolean = false,
     isPlaying: Boolean = false,
@@ -453,38 +424,9 @@ fun AlbumGridItem(
     modifier: Modifier = Modifier,
     coroutineScope: CoroutineScope,
     badges: @Composable RowScope.() -> Unit = {
-        val database = LocalDatabase.current
-        val downloadUtil = LocalDownloadUtil.current
-        var songs by remember {
-            mutableStateOf(emptyList<Song>())
-        }
-
-        LaunchedEffect(Unit) {
-            database.albumSongs(album.id).collect {
-                songs = it
-            }
-        }
-
-        var downloadState by remember {
-            mutableIntStateOf(Download.STATE_STOPPED)
-        }
-
-        LaunchedEffect(songs) {
-            if (songs.isEmpty()) return@LaunchedEffect
-            downloadUtil.downloads.collect { downloads ->
-                downloadState = when {
-                    songs.all { downloads[it.id]?.state == STATE_COMPLETED } -> STATE_COMPLETED
-                    songs.all { downloads[it.id]?.state in listOf(STATE_QUEUED, STATE_DOWNLOADING, STATE_COMPLETED) } -> STATE_DOWNLOADING
-                    else -> Download.STATE_STOPPED
-                }
-            }
-        }
-
         if (album.album.bookmarkedAt != null) {
             Icon.Favorite()
         }
-
-        Icon.Download(downloadState)
     },
     isActive: Boolean = false,
     isPlaying: Boolean = false,
