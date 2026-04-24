@@ -13,9 +13,8 @@ import com.zionhuang.innertube.models.SongItem
 import com.zionhuang.innertube.models.WatchEndpoint
 import com.zionhuang.innertube.models.WatchEndpoint.WatchEndpointMusicSupportedConfigs.WatchEndpointMusicConfig.Companion.MUSIC_VIDEO_TYPE_ATV
 import com.zionhuang.innertube.models.YouTubeClient
-import com.zionhuang.innertube.models.YouTubeClient.Companion.ANDROID_MUSIC
-import com.zionhuang.innertube.models.YouTubeClient.Companion.IOS
 import com.zionhuang.innertube.models.YouTubeClient.Companion.TVHTML5
+import com.zionhuang.innertube.models.YouTubeClient.Companion.TVHTML5_SIMPLY
 import com.zionhuang.innertube.models.YouTubeClient.Companion.VISION_OS
 import com.zionhuang.innertube.models.YouTubeClient.Companion.WEB
 import com.zionhuang.innertube.models.YouTubeClient.Companion.WEB_REMIX
@@ -92,7 +91,7 @@ object YouTube {
         private set
 
     suspend fun searchSuggestions(query: String): Result<SearchSuggestions> = runCatching {
-        val response = innerTube.getSearchSuggestions(WEB_REMIX, query).body<GetSearchSuggestionsResponse>()
+        val response = innerTube.getSearchSuggestions(TVHTML5_SIMPLY, query).body<GetSearchSuggestionsResponse>()
         SearchSuggestions(
             queries = response.contents?.getOrNull(0)?.searchSuggestionsSectionRenderer?.contents?.mapNotNull { content ->
                 content.searchSuggestionRenderer?.suggestion?.runs?.joinToString(separator = "") { it.text }
@@ -106,7 +105,7 @@ object YouTube {
     }
 
     suspend fun searchSummary(query: String): Result<SearchSummaryPage> = runCatching {
-        val response = innerTube.search(WEB_REMIX, query).body<SearchResponse>()
+        val response = innerTube.search(TVHTML5_SIMPLY, query).body<SearchResponse>()
         SearchSummaryPage(
             summaries = response.contents?.tabbedSearchResultsRenderer?.tabs?.firstOrNull()?.tabRenderer?.content?.sectionListRenderer?.contents?.mapNotNull { it ->
                 if (it.musicCardShelfRenderer != null)
@@ -141,7 +140,7 @@ object YouTube {
     }
 
     suspend fun search(query: String, filter: SearchFilter): Result<SearchResult> = runCatching {
-        val response = innerTube.search(WEB_REMIX, query, filter.value).body<SearchResponse>()
+        val response = innerTube.search(TVHTML5_SIMPLY, query, filter.value).body<SearchResponse>()
         SearchResult(
             items = response.contents?.tabbedSearchResultsRenderer?.tabs?.firstOrNull()
                 ?.tabRenderer?.content?.sectionListRenderer?.contents?.lastOrNull()
@@ -155,7 +154,7 @@ object YouTube {
     }
 
     suspend fun searchContinuation(continuation: String): Result<SearchResult> = runCatching {
-        val response = innerTube.search(WEB_REMIX, continuation = continuation).body<SearchResponse>()
+        val response = innerTube.search(TVHTML5_SIMPLY, continuation = continuation).body<SearchResponse>()
         val musicShelfContinuation = response.continuationContents?.musicShelfContinuation
             ?: return@runCatching SearchResult(emptyList(), null)
         SearchResult(
@@ -288,7 +287,7 @@ object YouTube {
 
     suspend fun playlist(playlistId: String): Result<PlaylistPage> = runCatching {
         val response = innerTube.browse(
-            client = WEB_REMIX,
+            client = WEB,
             browseId = "VL$playlistId",
             setLogin = true
         ).body<BrowseResponse>()
@@ -326,7 +325,7 @@ object YouTube {
 
     suspend fun playlistContinuation(continuation: String) = runCatching {
         val response = innerTube.browse(
-            client = WEB_REMIX,
+            client = WEB,
             continuation = continuation,
             setLogin = true
         ).body<BrowseResponse>()
@@ -446,26 +445,25 @@ object YouTube {
             return@runCatching lastResponse
         }
 
-        if (this.cookie != null) {
-            lastClient = ANDROID_MUSIC
-            lastResponse = fetch(lastClient)
-            if (lastResponse.playabilityStatus.status == "OK") {
-                lastPlayerClient = lastClient
-                return@runCatching lastResponse
-            }
-        }
-
-        lastClient = IOS
+        lastClient = WEB
         lastResponse = fetch(lastClient)
         if (lastResponse.playabilityStatus.status == "OK") {
             lastPlayerClient = lastClient
             return@runCatching lastResponse
         }
 
-        val tvResponse = fetch(TVHTML5)
-        if (tvResponse.playabilityStatus.status == "OK") {
-            lastPlayerClient = TVHTML5
-            return@runCatching tvResponse
+        lastClient = TVHTML5_SIMPLY
+        lastResponse = fetch(lastClient)
+        if (lastResponse.playabilityStatus.status == "OK") {
+            lastPlayerClient = lastClient
+            return@runCatching lastResponse
+        }
+
+        lastClient = TVHTML5
+        lastResponse = fetch(lastClient)
+        if (lastResponse.playabilityStatus.status == "OK") {
+            lastPlayerClient = lastClient
+            return@runCatching lastResponse
         }
 
         lastPlayerClient = lastClient
@@ -546,7 +544,7 @@ object YouTube {
         if (videoIds != null) {
             assert(videoIds.size <= MAX_GET_QUEUE_SIZE) // Max video limit
         }
-        innerTube.getQueue(WEB_REMIX, videoIds, playlistId).body<GetQueueResponse>().queueDatas
+        innerTube.getQueue(WEB, videoIds, playlistId).body<GetQueueResponse>().queueDatas
             .mapNotNull {
                 it.content.playlistPanelVideoRenderer?.let { renderer ->
                     NextPage.fromPlaylistPanelVideoRenderer(renderer)

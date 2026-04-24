@@ -11,7 +11,8 @@ data class Context(
     data class Client(
         val clientName: String,
         val clientVersion: String,
-        val osVersion: String?,
+        val clientScreen: String? = null,
+        val osVersion: String? = null,
         val gl: String,
         val hl: String,
         val visitorData: String?,
